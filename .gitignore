@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.parquet
+data/
+target/
+node_modules/
+.idea/
+.venv/
+
+# OS noise
+.DS_Store

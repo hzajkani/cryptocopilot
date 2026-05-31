@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptocopilot-ml"
+version = "0.1.0"
+description = "CryptoCopilot ML/data service — ingestion (Stage 1)"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pandas",
+    "numpy",
+    "ccxt",
+    "requests",
+    "feedparser",
+    "vaderSentiment",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "python-dotenv",
+    "apscheduler",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+include = ["ml*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "network: tests that require network access (deselect with -m 'not network')",
+]
