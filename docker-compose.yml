@@ -34,9 +34,22 @@ services:
     # batch worker: default command sleeps (scheduler loop); jobs are run via `docker compose run`
     command: ["python", "-m", "ml.scheduler"]
 
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/cryptocopilot
+      SPRING_DATASOURCE_USERNAME: cc
+      SPRING_DATASOURCE_PASSWORD: ccpass
+      OPENAI_API_KEY: ${OPENAI_API_KEY}     # unused until Stage 4, harmless now
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["8080:8080"]
+
 volumes:
   pgdata:
 
-# NOTE: the `backend` (Spring Boot) and `frontend` (React + nginx) services are
-# intentionally omitted in Stage 1. They are added to this compose file in
-# Stage 3 (backend) and Stage 6 (frontend). See PROJECT.md §7 (build roadmap).
+# NOTE: the `frontend` (React + nginx) service is intentionally omitted until
+# Stage 6. The `backend` (Spring Boot) service was added in Stage 3. See
+# PROJECT.md §7 (build roadmap).

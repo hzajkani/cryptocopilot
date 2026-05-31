@@ -6,6 +6,7 @@ __pycache__/
 target/
 node_modules/
 .idea/
+.vscode/
 .venv/
 
 # --- Stage 2 ML artifacts: reproducible via `docker compose run --rm ml python -m ml.train` ---
