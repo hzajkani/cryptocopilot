@@ -23,6 +23,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Stage 2 artifacts live on bind mounts so the model trained by one
+    # `compose run` is visible to the next `predict` run and inspectable on the
+    # host. Features stay Python-internal (parquet under data/processed/), never
+    # the DB — only `predictions`/`prediction_drivers` cross the boundary.
+    volumes:
+      - ./ml/models:/app/models     # calibrated bundle (models/v1/) + MODEL_CARD
+      - ./ml/data:/app/data         # data/processed/features_*.parquet cache
+      - ./ml/reports:/app/reports   # shap_summary.png, backtest_ml_v1*
     # batch worker: default command sleeps (scheduler loop); jobs are run via `docker compose run`
     command: ["python", "-m", "ml.scheduler"]
 

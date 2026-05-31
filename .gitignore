@@ -1,11 +1,23 @@
 .env
 __pycache__/
 *.parquet
-data/
+# top-level ingest scratch — anchored to repo root so it doesn't also hide ml/data
+/data/
 target/
 node_modules/
 .idea/
 .venv/
+
+# --- Stage 2 ML artifacts: reproducible via `docker compose run --rm ml python -m ml.train` ---
+# Heavy/binary outputs are not committed; the bind-mount dirs are kept via .gitkeep,
+# and the human-readable backtest summary (reports/*.md) IS committed.
+ml/data/*
+!ml/data/.gitkeep
+ml/models/*
+!ml/models/.gitkeep
+ml/reports/*
+!ml/reports/.gitkeep
+!ml/reports/*.md
 
 # OS noise
 .DS_Store

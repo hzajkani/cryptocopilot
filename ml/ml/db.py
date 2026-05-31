@@ -161,6 +161,35 @@ def upsert_fundamentals(data: Any) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Prediction outputs (Stage 2 — the only tables the ML model writes to)
+# --------------------------------------------------------------------------- #
+def upsert_predictions(data: Any) -> int:
+    """Upsert calibrated direction forecasts into ``predictions``.
+
+    PK is ``(ts_utc, symbol, timeframe)`` — re-running ``predict`` for the same
+    bar overwrites the row (probabilities, class, version, created_at refreshed).
+    """
+    return _bulk_upsert(
+        "predictions",
+        ["ts_utc", "symbol", "timeframe", "pred_class", "prob_up", "prob_down",
+         "prob_flat", "model_version", "created_at"],
+        ["ts_utc", "symbol", "timeframe"],
+        data,
+    )
+
+
+def upsert_prediction_drivers(data: Any) -> int:
+    """Upsert top-SHAP drivers into ``prediction_drivers`` (PK adds ``rank``)."""
+    return _bulk_upsert(
+        "prediction_drivers",
+        ["ts_utc", "symbol", "timeframe", "rank", "feature_name", "feature_value",
+         "shap_value"],
+        ["ts_utc", "symbol", "timeframe", "rank"],
+        data,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Small query helpers (used by run_all for reporting + the news window)
 # --------------------------------------------------------------------------- #
 def delete_news_older_than(days: int) -> int:
@@ -183,3 +212,57 @@ def fetch_all(sql: str, **params: Any) -> list[dict]:
     with get_engine().connect() as conn:
         result = conn.execute(text(sql), params)
         return [dict(row) for row in result.mappings()]
+
+
+# --------------------------------------------------------------------------- #
+# OHLCV reads (feed the Stage 2 feature pipeline)
+# --------------------------------------------------------------------------- #
+def query_ohlcv(symbol: str, timeframe: str, start: Any = None, end: Any = None):
+    """Return OHLCV for one ``(symbol, timeframe)`` as a tidy DataFrame.
+
+    Columns: ``ts_utc, symbol, timeframe, open, high, low, close, volume``,
+    sorted ascending by ``ts_utc``. ``start``/``end`` are optional ISO strings or
+    datetimes (inclusive lower bound, exclusive upper bound).
+    """
+    import pandas as pd
+
+    clauses = ["symbol = :symbol", "timeframe = :timeframe"]
+    params: dict[str, Any] = {"symbol": symbol, "timeframe": timeframe}
+    if start is not None:
+        clauses.append("ts_utc >= :start")
+        params["start"] = str(start)
+    if end is not None:
+        clauses.append("ts_utc < :end")
+        params["end"] = str(end)
+    sql = (
+        "SELECT ts_utc, symbol, timeframe, open, high, low, close, volume "
+        "FROM ohlcv WHERE " + " AND ".join(clauses) + " ORDER BY ts_utc"
+    )
+    with get_engine().connect() as conn:
+        df = pd.read_sql_query(text(sql), conn, params=params)
+    if not df.empty:
+        df["ts_utc"] = pd.to_datetime(df["ts_utc"], utc=True)
+    return df
+
+
+def query_ohlcv_all(timeframe: str, start: Any = None, end: Any = None):
+    """Return OHLCV for every symbol at ``timeframe`` (one query, all coins)."""
+    import pandas as pd
+
+    clauses = ["timeframe = :timeframe"]
+    params: dict[str, Any] = {"timeframe": timeframe}
+    if start is not None:
+        clauses.append("ts_utc >= :start")
+        params["start"] = str(start)
+    if end is not None:
+        clauses.append("ts_utc < :end")
+        params["end"] = str(end)
+    sql = (
+        "SELECT ts_utc, symbol, timeframe, open, high, low, close, volume "
+        "FROM ohlcv WHERE " + " AND ".join(clauses) + " ORDER BY symbol, ts_utc"
+    )
+    with get_engine().connect() as conn:
+        df = pd.read_sql_query(text(sql), conn, params=params)
+    if not df.empty:
+        df["ts_utc"] = pd.to_datetime(df["ts_utc"], utc=True)
+    return df

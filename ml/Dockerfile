@@ -9,8 +9,10 @@ WORKDIR /app
 
 # Install dependencies first (better layer caching): copy only the project
 # metadata, then install. The package itself is copied in the next step.
+# `.[dev]` adds pytest/ruff so the Stage 2 test suite runs in-container
+# (`docker compose run --rm ml pytest`).
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[dev]"
 
 # Copy the actual package source (and tests, so `pytest` works in-container).
 COPY ml ./ml

@@ -4,12 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cryptocopilot-ml"
-version = "0.1.0"
-description = "CryptoCopilot ML/data service — ingestion (Stage 1)"
+version = "0.2.0"
+description = "CryptoCopilot ML/data service — ingestion (Stage 1) + ML direction classifier (Stage 2)"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    # numpy is pinned <2 so the shap/numba toolchain resolves to manylinux
+    # wheels cleanly; nothing in this service needs numpy 2.x.
+    "numpy>=1.26,<2.0",
     "pandas",
-    "numpy",
     "ccxt",
     "requests",
     "feedparser",
@@ -18,12 +20,26 @@ dependencies = [
     "psycopg2-binary",
     "python-dotenv",
     "apscheduler",
+    # --- Stage 2: ML ---
+    "ta>=0.11",
+    "scikit-learn>=1.4",
+    "xgboost>=2.0,<3",
+    "optuna>=3.4",
+    "shap>=0.44",
+    "pyarrow>=14",
+    "matplotlib>=3.7",
+    "joblib>=1.3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ruff",
     "pytest",
+]
+# Optional experiment tracking — not installed in the image by default; the
+# training code uses mlflow only if it is importable.
+tracking = [
+    "mlflow",
 ]
 
 [tool.setuptools.packages.find]
@@ -38,4 +54,5 @@ pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "network: tests that require network access (deselect with -m 'not network')",
+    "integration: tests that require a live Postgres + a trained model (deselect with -m 'not integration')",
 ]

@@ -95,3 +95,69 @@ BLOCKCHAIN_CHARTS = [
 # Database
 # --------------------------------------------------------------------------- #
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+# --------------------------------------------------------------------------- #
+# ML service (Stage 2)
+# --------------------------------------------------------------------------- #
+from pathlib import Path  # noqa: E402
+
+# Artifact roots. In the container these resolve to /app/{data,models,reports}
+# (bind-mounted in docker-compose); locally they sit under ml/. ``parents[1]`` is
+# the package-root dir (``/app`` in the image, ``ml/`` on the host).
+_BASE_DIR = Path(os.getenv("ML_HOME", str(Path(__file__).resolve().parents[1])))
+DATA_DIR = Path(os.getenv("ML_DATA_DIR", str(_BASE_DIR / "data")))
+MODELS_DIR = Path(os.getenv("ML_MODELS_DIR", str(_BASE_DIR / "models")))
+REPORTS_DIR = Path(os.getenv("ML_REPORTS_DIR", str(_BASE_DIR / "reports")))
+PROCESSED_DIR = DATA_DIR / "processed"
+
+# The model version written to ``predictions.model_version`` and the dir under
+# ``models/`` that holds the calibrated bundle (``models/v1/``).
+MODEL_VERSION = "v1"
+
+# Feature timeframe used for signals (PROJECT.md §6: 1h and 4h for signals).
+DEFAULT_TIMEFRAME = "4h"
+# Hours per bar — used to convert horizons (1h/24h/7d) into bar counts so the
+# same feature code works on any timeframe.
+TIMEFRAME_HOURS = {"1h": 1, "4h": 4, "1d": 24}
+
+# Return-horizon lookbacks emitted as features (in hours). On a 4h frame these
+# map to {1, 1, 6, 42} bars (sub-bar horizons clamp to 1 bar).
+RETURN_HORIZONS_H = [1, 4, 24, 168]
+
+# --- Target (PROJECT.md / Stage 2 §3) ---------------------------------------
+# r_24h = close[t+24h]/close[t] - 1 ; UP > +2%, DOWN < -2%, else FLAT.
+# Kept at the spec's ±2% band: it is *more* learnable than a tighter band (a 2%
+# 24h move trends; a 1% move is mostly noise — tightening to ±1% lowered AUC and
+# macro F1 in testing). Class imbalance is handled at decision time via the
+# validation-selected prior-corrected rule, not by redefining the target.
+# Overridable via env for experiments.
+TARGET_HORIZON_H = 24
+TARGET_UP_THRESHOLD = float(os.getenv("ML_TARGET_UP", "0.02"))
+TARGET_DOWN_THRESHOLD = float(os.getenv("ML_TARGET_DOWN", "-0.02"))
+# Fixed class order -> integer codes (xgboost needs 0..K-1). Probability columns
+# in `predictions` are filled from this order.
+CLASSES = ["DOWN", "FLAT", "UP"]
+CLASS_TO_CODE = {c: i for i, c in enumerate(CLASSES)}
+CODE_TO_CLASS = {i: c for i, c in enumerate(CLASSES)}
+
+# --- Time-based splits (no shuffle) -----------------------------------------
+# NOTE (deviation from the Stage 2 prompt, documented in STATE.md): the prompt
+# specifies Train 2023-01-01→2024-06-30 etc., but Binance only returned ~2 years
+# of OHLCV (2024-05-31 → 2026-05-31). Those literal dates would leave ~1 month of
+# training data. We keep the *methodology* (chronological, no shuffle, train ≫
+# val, embargo gap) and anchor the boundaries inside the real span:
+#   train 12mo / val 3mo / test 9mo→present.
+# The test window deliberately spans ~9 months across multiple volatility regimes
+# (a robust out-of-sample estimate, and faithful to the prompt's "test → present"
+# large-test intent) rather than a short, single-regime tail. Override via env.
+TRAIN_START = os.getenv("ML_TRAIN_START", "2024-06-01")
+TRAIN_END = os.getenv("ML_TRAIN_END", "2025-05-31")
+VAL_START = os.getenv("ML_VAL_START", "2025-06-01")
+VAL_END = os.getenv("ML_VAL_END", "2025-08-31")
+TEST_START = os.getenv("ML_TEST_START", "2025-09-01")
+# Expanding-window CV folds on the training span (for Optuna).
+CV_FOLDS = 6
+
+# --- Tuning ------------------------------------------------------------------
+OPTUNA_TRIALS = int(os.getenv("ML_OPTUNA_TRIALS", "40"))
+RANDOM_STATE = 42

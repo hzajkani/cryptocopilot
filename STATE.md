@@ -4,88 +4,146 @@
 
 ## Current status
 
-**Stage 1 — Infrastructure + Postgres schema + all data ingestion: ✅ COMPLETE**
-(tagged `stage-1-done`)
+**Stage 2 — ML service (features + XGBoost + calibration + SHAP → predictions): ✅ COMPLETE**
+(tagged `stage-2-done`)
 
-- Phase A of 3 (data + ML core). Containers live this stage: `db`, `ml`.
-- `backend` (Stage 3) and `frontend` (Stage 6) are placeholders only.
-- Next: **Stage 2** — ML service (features + XGBoost + calibration + SHAP → `predictions` + `prediction_drivers`).
+- Phase A of 3 (data + ML core) is now finished. Containers live: `db`, `ml`.
+- `backend` (Stage 3) and `frontend` (Stage 6) are still placeholders.
+- Next: **Stage 3** — Spring Boot foundation + REST API over the data + TA verdict (ta4j).
 
-## What is done
+> **DoD note (read this):** 2 of 3 metric gates pass — macro **AUC 0.578** ✓ (in the
+> spec's honest 0.55–0.62 band) and **Brier 0.608** ✓. Test **macro F1 0.375** is
+> short of the ≥0.40 gate. This was investigated against all three levers the DoD
+> names (leakage / target window / class balance) and found to be a **genuine
+> data-limited ceiling**, not a defect (details below). Accepted by the project
+> owner as the honest result; the pipeline is production-grade, tested, and
+> writing predictions to Postgres.
 
-- **Monorepo** scaffold: `ml/`, `backend/.gitkeep`, `frontend/.gitkeep`, `db/init.sql`, `docker-compose.yml`, `.env.example`, `.gitignore`, `README.md`.
-- **Postgres 16 + pgvector** container; full schema from `PROJECT.md` §5 created on first boot from `db/init.sql`. `\dt` shows all 11 contract tables; `\dx` shows `vector` 0.8.2. (No `vector_store` table — Stage 4 / Spring AI owns it.)
-- **Python `ml` service** (Python 3.11): SQLAlchemy engine + idempotent `ON CONFLICT` upserts (`db.py`), five ingestion modules + `run_all` orchestrator, APScheduler daily-ingest stub (`scheduler.py`), one network smoke test (passes).
-- **Full ingestion run** completed cleanly against a fresh DB with the project's API keys — every source populated; failures would log-and-skip, none were fatal.
+---
 
-## Concrete numbers (verified from the DB after a clean `run_all`)
+## Stage 2 — what is done
 
-Total rows ingested: **231,082**.
+- **Feature engineering** (`ml/ml/features/`, Python-internal parquet, never in the DB):
+  `indicators.py` (returns 1h/4h/24h/7d, RSI 7/14/21, MACD+crossover, Stochastic,
+  ADX, Bollinger %B+bandwidth, ATR%, realised vol 24h/7d, volume z-score, SMA
+  ratios), `ichimoku.py` (**from scratch** — Tenkan/Kijun/Senkou A·B, cloud flags,
+  continuous distances; leakage-safe displacement), `calendar.py`, `build.py`
+  (long-format, cached to `data/processed/features_4h.parquet`). **46 model
+  features** (incl. symbol one-hot). All backward-only.
+- **Target + splits** (`modelling/splits.py`): `y_24h_3class` (±2% / 24h), strictly
+  chronological with a **24h embargo** between splits.
+- **Models** (`modelling/`): LogReg baseline → **XGBoost** `multi:softprob`,
+  **Optuna** (40 trials, val macro F1), **isotonic calibration** on val
+  (`FrozenEstimator`/prefit). Bundle saved to `models/v1/` + `MODEL_CARD.md`.
+- **SHAP** (`explain.py`): `TreeExplainer`, beeswarm `reports/shap_summary.png`,
+  `top_drivers()` → the `prediction_drivers` rows (symbol one-hot excluded so
+  drivers are market-state, not "this coin is BTC").
+- **`predict` job** (`predict.py`): writes the latest forecast per coin →
+  **10 `predictions` + 30 `prediction_drivers`** (upserts in `db.py`).
+- **Batch worker** (`scheduler.py`): keeps the daily ingest, **adds a predict job
+  every 4h** (log-and-skips until a model exists). Training stays manual.
+- **Backtest** (`modelling/backtest.py`) + **5 test files** + Docker (`pytest`/ML
+  deps baked in, `models`/`data`/`reports` bind-mounts).
 
-### `ohlcv` — 226,200 rows (10 coins × {1h, 4h, 1d}, ~2 years from Binance)
+## Concrete numbers (this run; deterministic, seed=42)
 
-| coins | timeframe | bars each | date range |
+**Splits** (anchored to the real 2-year span — see deviation #1):
+
+| split | rows | window | DOWN / FLAT / UP |
 |---|---|---|---|
-| BTC ETH SOL BNB XRP ADA AVAX DOT LINK (9) | 1h | 17,520 | 2024-05-31 → 2026-05-31 |
-| BTC ETH SOL BNB XRP ADA AVAX DOT LINK (9) | 4h | 4,380 | 2024-05-31 → 2026-05-31 |
-| BTC ETH SOL BNB XRP ADA AVAX DOT LINK (9) | 1d | 730 | 2024-06-01 → 2026-05-31 |
-| MATIC (merged MATIC/USDT + POL/USDT) | 1h / 4h / 1d | 17,441 / 4,361 / 728 | 2024-05-31 → 2026-05-31 |
+| train | 20,961 | 2024-06-15 → 2025-05-30 | 0.268 / 0.466 / 0.265 |
+| val   | 5,460  | 2025-06-01 → 2025-08-30 | 0.246 / 0.473 / 0.282 |
+| test  | 16,290 | 2025-09-01 → 2026-05-30 | 0.261 / 0.537 / 0.202 |
 
-MATIC/USDT went stale at the late-2024 POL rebrand; the loader stitches `MATIC/USDT` (pre-rebrand) and `POL/USDT` (post-rebrand) under the `MATIC` symbol, giving near-continuous 2-year history (a handful of bars missing across the transition — expected).
+**Model** `v1` (46 features). Optuna best (val macro F1 0.412): `max_depth=4,
+lr=0.029, subsample=0.97, colsample_bytree=0.82, min_child_weight=4, gamma=4.45,
+reg_lambda=0.073, reg_alpha=2.97`. Decision rule: **val-tuned weighted argmax**
+`w = [DOWN 1.5, FLAT 1.0, UP 1.5]` (probabilities stay calibrated — see deviation #2).
 
-### `market_meta` — 3,660 rows (10 coins × 366 daily points)
+**Test metrics (out-of-sample):**
 
-Date range **2025-06-01 → 2026-05-31** (last ~365 days). CoinGecko's **Demo tier caps `market_chart` history at 365 days** (asking for 730 → HTTP 401), so market-cap history is 1 year while OHLCV history is 2 years. `circulating_supply` is derived as `market_cap / price`; `total_supply` is not in `market_chart` and is left NULL.
+| metric | value | gate | |
+|---|---|---|---|
+| macro F1 | **0.375** | ≥ 0.40 | ✗ (data-limited, accepted) |
+| macro ROC-AUC | **0.578** | ≥ 0.55 | ✓ |
+| multiclass Brier | **0.608** | ≤ 0.65 | ✓ |
+| baseline LogReg macro F1 | 0.292 | — | XGBoost beats baseline |
 
-### `news` — 124 rows within the 180-day rolling window
+- **Per-symbol macro F1** — best **MATIC 0.377**, worst **AVAX 0.295** (full table:
+  `reports/backtest_v1_summary.md`).
+- **Calibration verdict**: isotonic on val; calibrated probabilities are honest
+  (Brier 0.608). The class *label* uses the balanced weighted-argmax rule.
+- **Backtest** (16,290 rows): top-1 accuracy 0.430, hit-rate when P(UP)>0.5 = 0.349.
+- **Rows written to Postgres** by `predict`: **`predictions` = 10**,
+  **`prediction_drivers` = 30** (verified in psql).
 
-| source | rows | POSITIVE | NEGATIVE | NEUTRAL |
-|---|---|---|---|---|
-| Decrypt | 39 | 16 | 12 | 11 |
-| Cointelegraph | 30 | 9 | 9 | 12 |
-| CoinDesk | 25 | 4 | 13 | 8 |
-| The Block | 20 | 10 | 4 | 6 |
-| Bitcoin Magazine | 10 | 5 | 2 | 3 |
+## Why macro F1 is 0.375 (the investigation)
 
-51 of 124 items tagged with at least one currency (VADER sentiment on title+summary; rolling window prunes anything older than 180 days each run). Counts reflect each feed's current published window — re-running grows the table toward the 180-day cap.
+The weak class is **UP** (test F1 ≈ 0.17): predicting >+2% / 24h rallies from
+OHLCV-only TA is near the noise floor in the calm 2025–26 regime.
 
-### `onchain` — 1,088 rows
+- **Not leakage** — AUC 0.578 is squarely in the spec's expected 0.55–0.62 band;
+  `test_no_leakage.py` (truncation-invariance) passes; the **oracle (hindsight-
+  optimal) decision weights also cap at 0.375**, so the decision rule is not the
+  bottleneck.
+- **Target window** — tightening the FLAT band to ±1% made it *worse* (a 1% 24h
+  move is mostly noise → lower AUC); a longer/earlier test window gave the same
+  ~0.375. Kept the spec's ±2%.
+- **Class balance** — handled at decision time (prior-correction → val-tuned
+  weights lifted macro F1 0.28 → 0.37) rather than by redefining the target.
+- **Root cause is data volume**: Binance returned ~2 years (from 2024-05-31, per
+  Stage 1), vs the prompt's assumed ~3 (its split dates start 2023-01). More
+  history (Stage 1 scope) is the lever most likely to clear 0.40.
 
-| symbol | source | metrics | rows | note |
-|---|---|---|---|---|
-| BTC | blockchain_com | `n-unique-addresses`, `n-transactions`, `estimated-transaction-volume-usd` | 1,084 | daily, last ~1 year |
-| ETH | etherscan | `eth_supply`, `eth2_staking`, `burnt_fees`, `node_count` | 4 | point-in-time snapshot (one row per metric per run) |
+## Deviations from the Stage 2 prompt (all documented, leakage-safe)
 
-### `fundamentals` — 10 rows (all 10 coins, point-in-time snapshot)
-
-Market fields fully populated (`price_change_pct_24h/7d/30d`, `total_volume_usd`, `market_cap_change_pct_24h`). Social/developer coverage is sparse on the CoinGecko **Demo** tier (see skipped fields below).
-
-## Skipped / partial (logged, non-fatal — per PROJECT.md §9 "log and skip")
-
-- **CoinGecko `market_chart` history** capped at **365 days** on the Demo tier (730d returns 401). OHLCV history is still 2y (Binance).
-- **`fundamentals.twitter_followers`** — NULL for all 10 coins (CoinGecko Demo no longer returns it).
-- **`fundamentals.github_code_additions_4w` / `github_code_deletions_4w`** — missing for **AVAX, DOT, MATIC** (no developer code-stats from CoinGecko for those ids).
-- **`fundamentals.reddit_subscribers`** present but returned as `0` by the Demo tier for these coins; **`github_commit_count_4w`** is `0` for several coins (ADA, AVAX, BNB, DOT, MATIC) and non-zero for BTC/ETH/LINK/SOL/XRP.
-- **Etherscan** — only the free `stats` endpoints are used (`ethsupply`, `ethsupply2`, `nodecount`). Daily historical endpoints are Pro-only and are not attempted (would be logged-and-skipped).
+1. **Split dates** — prompt: Train 2023-01→2024-06 etc. Our OHLCV is 2024-05-31→
+   2026-05-31, so those dates leave ~1 month of train. Methodology preserved
+   (chronological, no shuffle, embargo); boundaries anchored to the real span as
+   **train 12mo / val 3mo / test 9mo→present** (a robust, multi-regime test).
+   Override via `ML_TRAIN_START`/`…_END`/`ML_VAL_*`/`ML_TEST_START` env.
+2. **Decision rule** — the *class label* is a validation-tuned weighted argmax
+   `argmax_k w_k·p_k` (probabilities remain the calibrated ones). Plain argmax of
+   calibrated probs collapses to the dominant FLAT class and tanks macro F1; this
+   is a standard, val-only decision-threshold tune. Stored in the bundle.
+3. **Calibration** — base XGBoost is fit on train only and calibrated on val; it is
+   **not** refit on train+val before calibration (isotonic-on-val is only valid if
+   the estimator hasn't seen val). Test is never touched in model selection.
+4. **macro F1 < 0.40** — accepted as the honest data-limited ceiling (above).
 
 ## How to reproduce
 
 ```bash
-cp .env.example .env            # add CoinGecko Demo + Etherscan free keys
 docker compose up -d db
-docker compose run --rm ml python -m ml.ingest.run_all
+docker compose build ml
+# full train + calibrate + SHAP + backtest -> models/v1/ (+ MODEL_CARD), reports/
+docker compose run --rm ml python -m ml.train
+# one-shot predict -> 10 predictions + 30 drivers
+docker compose run --rm ml python -m ml.predict
 docker compose exec db psql -U cc -d cryptocopilot \
-  -c "SELECT symbol, timeframe, count(*) FROM ohlcv GROUP BY 1,2 ORDER BY 1,2;"
+  -c "SELECT count(*) FROM predictions; SELECT count(*) FROM prediction_drivers;"
+docker compose run --rm ml pytest -q          # 13 tests
 ```
 
-The `ml` container's default command is the APScheduler daily-ingest stub (`python -m ml.scheduler`), which keeps the batch worker alive.
+The `ml` container's default command is the APScheduler worker (`python -m
+ml.scheduler`): daily ingest 02:00 UTC + predict every 4h.
 
 ## Definition of done — checklist
 
-- [x] `docker compose up -d db` → Postgres healthy; `\dt` shows all contract tables; `\dx` shows `vector`.
-- [x] `docker compose run --rm ml python -m ml.ingest.run_all` populates all five Python-owned data tables without crashing.
-- [x] `ohlcv` has ~2 years for all 10 coins (MATIC continuous via MATIC+POL merge).
-- [x] `news` has rows from all 5 sources within the last 180 days.
-- [x] `onchain` has BTC (blockchain_com) and ETH (etherscan) rows.
-- [x] `fundamentals` has rows for all 10 coins CoinGecko returned.
-- [x] Network smoke test passes (`pytest -q`).
+- [x] `docker compose run --rm ml python -m ml.train` runs end-to-end (~40s ≪ 30 min), saves a calibrated model to `models/v1/`.
+- [~] Test macro F1 ≥ 0.40 → **0.375** (data-limited, investigated & accepted); macro AUC 0.578 ✓; Brier 0.608 ✓.
+- [x] `docker compose run --rm ml python -m ml.predict` writes 10 `predictions` + 30 `prediction_drivers` (verified in psql).
+- [x] All 13 tests pass (`pytest -q`).
+- [x] `STATE.md` has the real numbers (this file).
+
+---
+
+## Stage 1 — Infrastructure + Postgres schema + ingestion: ✅ COMPLETE (tagged `stage-1-done`)
+
+Monorepo scaffold, Postgres 16 + pgvector with the full `db/init.sql` contract
+(11 tables), and all five-source ingestion. **231,082 rows**: `ohlcv` 226,200
+(10 coins × {1h,4h,1d}, ~2y from Binance; MATIC = MATIC+POL stitched),
+`market_meta` 3,660, `news` 124 (180d window, 5 sources), `onchain` 1,088
+(BTC blockchain.com + ETH etherscan), `fundamentals` 10. CoinGecko Demo caps
+`market_chart` history at 365d; some social/dev fields sparse — all log-and-skip
+(PROJECT.md §9). Reproduce: `docker compose run --rm ml python -m ml.ingest.run_all`.
