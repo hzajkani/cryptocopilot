@@ -104,6 +104,15 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- Spring AI 1.0.8 drags in swagger-annotations-jakarta 2.2.30, but
+                 springdoc 2.8.17 ships swagger-core-jakarta 2.2.47 which calls
+                 Schema.$dynamicRef() (added in annotations 2.2.31+). Align the
+                 annotations to 2.2.47 so /v3/api-docs doesn't NoSuchMethodError. -->
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations-jakarta</artifactId>
+                <version>2.2.47</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
