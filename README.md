@@ -48,10 +48,18 @@ no shared model files. Each table has exactly one writer (see `PROJECT.md` §3).
 Prerequisites: Docker + Docker Compose. Get a free [CoinGecko Demo](https://www.coingecko.com/en/api)
 key and a free [Etherscan](https://etherscan.io/apis) key.
 
+> **Tip — set your editor once:** the commands below open `.env` with `$EDITOR` (falling back
+> to `nano`). To use VS Code / vim / etc. permanently, add one line to your shell rc:
+> ```bash
+> echo 'export EDITOR=code' >> ~/.zshrc && source ~/.zshrc   # or: nano / vim / "code -w"
+> ```
+
 ```bash
 # 0. Configure secrets (CoinGecko + Etherscan free keys). The Stage 4 RAG chat runs on a
 #    free local Ollama (no API key) — see docs/OLLAMA_SETUP.md.
-cp .env.example .env && $EDITOR .env
+#    `cp -n` is non-destructive: it will NOT overwrite an existing .env.
+cp -n .env.example .env
+${EDITOR:-nano} .env   # use $EDITOR if set, otherwise fall back to nano
 
 # 1. Start Postgres + pgvector (schema is created from db/init.sql on first boot)
 docker compose up -d db
@@ -85,7 +93,9 @@ training also produces local model + report files. Run them in this order the fi
 
 ```bash
 # 0. one-time: secrets + start the database (schema auto-created from db/init.sql)
-cp .env.example .env && $EDITOR .env
+#    `cp -n` will NOT overwrite an existing .env (so re-running this block is safe).
+cp -n .env.example .env
+${EDITOR:-nano} .env   # use $EDITOR if set, otherwise fall back to nano
 docker compose up -d db
 docker compose build ml
 
