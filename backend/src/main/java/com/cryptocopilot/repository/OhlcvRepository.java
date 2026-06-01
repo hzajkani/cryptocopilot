@@ -21,4 +21,15 @@ public interface OhlcvRepository extends JpaRepository<Ohlcv, OhlcvId> {
 
     /** The single latest candle for a symbol/timeframe. */
     Optional<Ohlcv> findFirstBySymbolAndTimeframeOrderByTsUtcDesc(String symbol, String timeframe);
+
+    /**
+     * The next candle strictly after {@code after} — the bar a MARKET/LIMIT order fills against
+     * (PROJECT.md Stage 5 §2). Empty at the live edge (no future bar yet).
+     */
+    Optional<Ohlcv> findFirstBySymbolAndTimeframeAndTsUtcGreaterThanOrderByTsUtc(
+            String symbol, String timeframe, Instant after);
+
+    /** The latest candle at or before {@code ts} — the mark-to-market reference price. */
+    Optional<Ohlcv> findFirstBySymbolAndTimeframeAndTsUtcLessThanEqualOrderByTsUtcDesc(
+            String symbol, String timeframe, Instant ts);
 }

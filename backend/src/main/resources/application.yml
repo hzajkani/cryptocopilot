@@ -52,6 +52,16 @@ spring:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
 
+# ===== Stage 5: paper trading + Analyst (all configurable; defaults match the spec) =====
+cryptocopilot:
+  trading:
+    starting-balance: 10000   # USD seed for resetAccount
+    slippage-bps: 5           # 0.05% MARKET slippage, applied against the trader
+    fee-bps: 10               # 0.10% taker fee on every fill
+    timeframe: 1h             # orders fill against the 1h OHLCV grid
+  analyst:
+    ml-confidence-threshold: 0.50   # τ: above this an ML UP/DOWN scores ±2 instead of ±1
+
 management:
   endpoints:
     web:

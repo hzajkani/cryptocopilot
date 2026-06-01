@@ -13,8 +13,9 @@ public class OpenApiConfig {
     public OpenAPI cryptoCopilotOpenApi() {
         return new OpenAPI().info(new Info()
                 .title("CryptoCopilot API")
-                .description("Read-only market data, fused ML + TA signals, and the deterministic "
-                        + "ta4j TA verdict. Decision-support, not financial advice.")
+                .description("Market data, fused ML + TA signals, the deterministic ta4j TA verdict, "
+                        + "the cited RAG Researcher, the deterministic Analyst opinion, and the "
+                        + "long-only paper-trading engine. Decision-support, not financial advice.")
                 .version("v1"));
     }
 }
