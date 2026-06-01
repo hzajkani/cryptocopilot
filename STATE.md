@@ -29,7 +29,12 @@
 The `backend` container (Java 21 + Spring Boot 3.3.5, Maven) is live: it reads Python's tables
 **read-only** over JDBC, serves a REST API over the existing data, and computes a deterministic
 Ichimoku-centric **TA verdict with ta4j 0.17**. No RAG/trading/Analyst/frontend yet (Stages 4–6).
-One modular monolith, not microservices (PROJECT.md §2).
+One modular monolith, not microservices (PROJECT.md §2). Code is organised in conventional
+layered packages — `controller`, `service`, `repository`, `entity`, `dto`, `config`, `util`
+(under `com.cryptocopilot`) — and the API is self-documented with OpenAPI 3 / Swagger UI
+(springdoc). Entities use the JPA standard (`jakarta.persistence`) mapped by Spring Data JPA
+repositories; that is the Spring Data JPA way (it builds on Hibernate, which `ddl-auto: validate`
+requires).
 
 **Live endpoints** (`docker compose up -d` → db + ml + backend; Tomcat on :8080, starts in ~2s):
 
@@ -43,8 +48,11 @@ One modular monolith, not microservices (PROJECT.md §2).
   modelVersion, drivers[3], ta}`. **`mlConfidence` = calibrated prob of the stored `pred_class`**
   (e.g. BTC `FLAT` → 0.6997 = `prob_flat`) — never re-argmaxed from the probabilities.
 - `GET /api/ta/{symbol}` → the full `TAVerdict`.
+- **Swagger UI** at `GET /swagger-ui.html`; the OpenAPI 3 spec at `GET /v3/api-docs` (documents
+  all four `/api/**` endpoints; title "CryptoCopilot API" v1). Controllers carry
+  `@Tag`/`@Operation`/`@Parameter`.
 
-**TA verdict engine** (`com.cryptocopilot.ta`, pure ta4j from raw `ohlcv` — never Python
+**TA verdict engine** (`com.cryptocopilot.service.TaVerdictEngine`, pure ta4j from raw `ohlcv` — never Python
 features, PROJECT.md §3): Ichimoku (9/26/52; the +26 displacement is applied as
 `getValue(endIndex−26)` on offset-0 raw Senkou spans, mirroring the Python `shift(26)` —
 leakage-safe), RSI(14), MACD(12,26)+signal(9) histogram, Bollinger %B(20,2). Spec scoring →
@@ -59,17 +67,17 @@ started clean (no `HHH000…` schema-validation warnings).
 
 **Tests — 8, all green (`mvn test`):**
 
-- `TaVerdictTest` (4) — golden bullish ramp → **BULLISH / MODERATE, score 2.5**, exact 4 signals;
-  bearish-cloud branches fire on a downtrend (nets NEUTRAL — the oversold guard hedges it, an
-  intended property); `score→direction/confidence` thresholds; insufficient-history guard.
-- `SignalsControllerTest` (`@WebMvcTest`, mocked `SignalService`) — `/api/signals` returns 10
-  coins, each with `mlClass` + `mlConfidence` + a `ta` block.
-- `OhlcvRepositoryTest` (`@DataJpaTest` vs the running `db`, read-only, `ddl-auto: validate`) —
-  OHLCV range (ascending, bounded) + latest-prediction (`v1`) queries.
+- `service.TaVerdictTest` (4) — golden bullish ramp → **BULLISH / MODERATE, score 2.5**, exact 4
+  signals; bearish-cloud branches fire on a downtrend (nets NEUTRAL — the oversold guard hedges
+  it, an intended property); `score→direction/confidence` thresholds; insufficient-history guard.
+- `controller.SignalsControllerTest` (`@WebMvcTest`, mocked `SignalService`) — `/api/signals`
+  returns 10 coins, each with `mlClass` + `mlConfidence` + a `ta` block.
+- `repository.OhlcvRepositoryTest` (`@DataJpaTest` vs the running `db`, read-only,
+  `ddl-auto: validate`) — OHLCV range (ascending, bounded) + latest-prediction (`v1`) queries.
 
-**Stack/versions:** Spring Boot 3.3.5, Java 21, ta4j 0.17, Hibernate 6.5.3, Postgres 16 +
-pgvector. Build: `backend/Dockerfile` multi-stage (`maven:3.9-eclipse-temurin-21` →
-`eclipse-temurin:21-jre`, port 8080).
+**Stack/versions:** Spring Boot 3.3.5, Java 21, ta4j 0.17, springdoc-openapi 2.6.0,
+Hibernate 6.5.3, Postgres 16 + pgvector. Build: `backend/Dockerfile` multi-stage
+(`maven:3.9-eclipse-temurin-21` → `eclipse-temurin:21-jre`, port 8080).
 
 ### Definition of done — checklist
 
