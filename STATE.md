@@ -4,15 +4,27 @@
 
 ## Current status
 
-**Stage 3 — Spring Boot backend (data REST API + ta4j TA verdict): ✅ COMPLETE**
-(tagged `stage-3-done`)
+**Stage 4 — RAG (Spring AI + pgvector + cited chat): ✅ COMPLETE** (tagged `stage-4-done`)
 
-- Phase B of 3 (Java/Spring backend) has begun. Containers live: `db`, `ml`, `backend`.
-- `frontend` (Stage 6) is still a placeholder.
-- Next: **Stage 4** — RAG (Spring AI + pgvector): index from relational tables + KB, retrieve,
-  generate with citations, chat endpoint.
-- Stage 2 (ML) remains ✅ (`stage-2-done`); accepted data-limited macro **F1 0.375** /
-  **AUC 0.578** — see its section below.
+- Phase B of 3 (Java/Spring backend). Containers live: `db`, `ml`, `backend`.
+- The **Researcher** is fully implemented, wired, and **verified live** (`com.cryptocopilot.rag`):
+  Spring AI 1.0.8 + pgvector, corpus indexer (news + onchain + fundamental + KB), rule-based query
+  classifier, recency-aware retriever, strictly-grounded generator, `POST /api/chat` +
+  `GET /api/rag/status` + `POST /api/rag/reindex`, a 10-coin Knowledge Base, and a retrieval eval.
+- **Runs on a free LOCAL Ollama** (chat `llama3.2:3b`, embeddings `nomic-embed-text` **768-dim**),
+  not a paid API — €0 cost, no API key. (We pivoted to Ollama after the supplied `OPENAI_API_KEY`
+  returned `429 insufficient_quota`; OpenAI remains a one-config-flip switch-back.) Setup for any PC:
+  **`docs/OLLAMA_SETUP.md`**.
+- Backend boots clean on **Spring Boot 3.4.13** (bumped from 3.3.5 for Spring AI); `vector_store`
+  (768-dim, HNSW cosine) auto-created and owned by Spring AI; `ddl-auto: validate` still passes.
+- **Live DoD met:** reindex → **news 124 · onchain 53 · fundamental 10 · kb 70 (257 chunks)**;
+  mechanism chat answers with `[N]` citations from KB; out-of-corpus + trading-advice refused with
+  the exact phrases; a zero-news coin refuses cleanly. **Retrieval eval recall@8 = 0.90** (news 0.88,
+  mechanism 0.88, fundamental 1.00; classifier accuracy 1.00) — `reports/retrieval_eval.md`.
+- **Tests: 39 offline pass (`mvn test`); live `RagLiveIT` 7/7 pass (`RAG_LIVE=1 mvn -Dtest=RagLiveIT test`).**
+- `frontend` (Stage 6) is still a placeholder. Next: **Stage 5** (paper-trading engine + Analyst).
+- Stage 3 ✅ (`stage-3-done`); Stage 2 ✅ (`stage-2-done`); accepted data-limited macro
+  **F1 0.375** / **AUC 0.578** — see those sections below.
 
 > **Stage 2 DoD note:** 2 of 3 metric gates pass — macro **AUC 0.578** ✓ (in the
 > spec's honest 0.55–0.62 band) and **Brier 0.608** ✓. Test **macro F1 0.375** is
@@ -21,6 +33,155 @@
 > data-limited ceiling**, not a defect (details below). Accepted by the project
 > owner as the honest result; the pipeline is production-grade, tested, and
 > writing predictions to Postgres.
+
+---
+
+## Stage 4 — what is done (the Researcher: RAG)
+
+The `backend` gained a strictly-grounded, cited RAG chat over the data already in Postgres (news +
+on-chain + fundamentals) plus a curated 10-coin Knowledge Base, using **Spring AI 1.0.8 + pgvector**
+with a **free local Ollama** model provider (chat `llama3.2:3b`, embeddings `nomic-embed-text`,
+**768-dim**). New package `com.cryptocopilot.rag`. One modular monolith still (PROJECT.md §2); Java
+reads Python's tables read-only and writes only the Spring-AI-owned `vector_store`.
+
+> **Provider note:** the brief defaulted to OpenAI (`gpt-4o-mini` + `text-embedding-3-small`,
+> 1536-dim). The supplied `OPENAI_API_KEY` authenticated but the account had **no quota
+> (`429 insufficient_quota`)**, so we switched the active provider to **local Ollama** — €0, no API
+> key, runs on any PC (see `docs/OLLAMA_SETUP.md`). The OpenAI starter is still on the classpath;
+> switching back is `spring.ai.model.{chat,embedding}=openai` + `dimensions=1536` + re-index.
+
+**Stack changes:** Spring Boot **3.3.5 → 3.4.13** (Spring AI 1.0.x requires 3.4.x/3.5.x), springdoc
+**2.6.0 → 2.8.17**, added `spring-ai-bom:1.0.8` + `spring-ai-starter-model-ollama` (active) +
+`spring-ai-starter-model-openai` (inactive, kept) + `spring-ai-starter-vector-store-pgvector`.
+Provider chosen via `spring.ai.model.{chat,embedding}=ollama`. `vector_store` (id `uuid`,
+`embedding vector(768)`, HNSW `vector_cosine_ops`) is auto-created at boot (`initialize-schema:
+true`) — **not** hand-made. The backend container reaches host Ollama at
+`host.docker.internal:11434` (wired in `docker-compose.yml`, Linux-safe via `host-gateway`).
+Verified: backend boots in ~5s, Hibernate `validate` clean, `vector_store` present at 768-dim.
+
+**Pipeline (all built, unit-tested):**
+
+- **CorpusIndexer** — clear-and-rebuild into pgvector, idempotent via deterministic UUID ids
+  (`UUID.nameUUIDFromBytes`); clears its own chunks by `source_type` filter, then `add()`. Sources:
+  one `Document` per `news` row (`title\nsummary`, metadata symbol(s)/source/url/sentiment/ts);
+  weekly **on-chain** synthesis per `(symbol, ISO-week)` mean; one **fundamental** synthesis per
+  coin from the latest snapshot (null/zero fields omitted); **KB** split by `##` section.
+- **QueryClassifier** — rule-based → `kb`/`news`/`onchain`/`fundamental`/`all`, priority
+  onchain→fundamental→news→kb→all (so "recent on-chain transactions" → onchain, "current
+  sentiment" → news, not kb). Deviation: "supply" routes to **KB** (supply schedules live only in
+  the KB; `fundamentals` has no supply field).
+- **Retriever** — `similaritySearch` with `source_type` (+ optional `symbol`) filter, oversample
+  then recency re-rank `0.7*similarity + 0.3*exp(-ageDays/14)` for news/onchain only (KB/fundamental
+  by similarity alone); returns numbered chunks `[1..k]`, k=8.
+- **Generator** — `ChatClient` (Ollama `llama3.2:3b`, temp 0) behind a small `LlmClient` seam
+  (`SpringAiLlmClient`, provider-agnostic, unit-testable). System prompt verbatim from the Stage 4
+  brief. **Deterministic guards** so the exact refusal
+  phrases never depend on the LLM: trading-advice → refuse before any call; empty retrieval →
+  refuse before any call; **answer with no verifiable `[N]` citation → treated as ungrounded and
+  replaced with the no-context refusal**. In-memory cache keyed by `(query, chunkIds)`.
+- **REST:** `POST /api/chat {query, symbols?}` → `AnswerWithCitations(answer, citations,
+  retrievedChunks, latencyMs, queryClassification)`; `GET /api/rag/status`; `POST /api/rag/reindex`.
+  Documented in Swagger (tag "Researcher (RAG)").
+
+**Knowledge Base:** `backend/src/main/resources/kb/{btc,eth,sol,bnb,xrp,ada,avax,dot,link,matic}.md`
+(ships in the jar). Each has the 7 required `##` sections (Identity, Consensus, Supply schedule,
+Use case, Key risks, On-chain footprint, Last updated), 339–425 words, factual mechanism/tokenomics
+only — no price targets, nothing forward-looking (PROJECT.md §9). → **70 KB chunks** (10 × 7).
+
+**Corpus reality (sized to the live DB; PROJECT.md Stage 4 §"Reality"):**
+- `news` **124 rows** over a ~4-day window (2026-05-27 → 05-31); **73 untagged**, 38 BTC-tagged,
+  rest sparse → news-category recall is corpus-dependent and grows with ingestion.
+- `onchain` is **BTC-only** (1,084 rows, 3 daily metrics; **no ETH** — etherscan absent in the DB
+  despite Stage 1's note) → **53 weekly BTC chunks**. Built generically over whatever symbols exist.
+- `fundamentals` was found **empty (0 rows)** at the start of this stage (Stage 1's 10 were lost on
+  a volume reset); **restored to 10** via `docker compose run --rm ml python -m
+  ml.ingest.coingecko_fundamentals` (twitter_followers null for all; a few coins lack github
+  code-add/del — log-and-skip, PROJECT.md §9) → **10 fundamental chunks**.
+- **Actual reindex counts (live): news 124 · onchain 53 · fundamental 10 · kb 70 = 257 chunks**
+  (embedded via Ollama in ~4s; verified in `vector_store` and via `GET /api/rag/status`).
+
+**Retrieval eval:** `evals/retrieval_eval.yaml` — 20 questions (8 news / 8 mechanism / 4
+fundamental), each with `expected_keywords/symbols/source_types`, `max_age_days`,
+`expected_query_classification`, authored against the *actual* corpus (real headlines, real
+fundamentals values). Runner = `RagLiveIT.retrievalEval` → writes `reports/retrieval_eval.md`.
+recall@8 = fraction of questions with ≥1 of the top-8 chunks matching the expected source_type +
+symbol + a keyword.
+
+**Live results (Ollama `nomic-embed-text`):** **recall@8 overall 0.90** — **news 0.88** (7/8),
+**mechanism 0.88** (7/8), **fundamental 1.00** (4/4); **classifier accuracy 1.00** (20/20); all news
+age-gates ≤ 14d. The two misses are retrieval-quality artifacts of the small 768-dim model on
+generic phrasing (n8 "Trump … legislation"; m6 "use case for Chainlink") — both above the DoD gates
+(mechanism/fundamental ≥ 0.75, overall ≥ 0.70). News recall is corpus-dependent (~124 rows, ~4-day
+window) and will rise as the `ml` scheduler ingests more news.
+
+**Tests — 39 offline pass (`mvn test`); 7 live pass (`RAG_LIVE=1 mvn -Dtest=RagLiveIT test`):**
+- `rag.QueryClassifierTest` (22) — all 5 classes incl. the tricky precedence cases.
+- `rag.GeneratorTest` (6) — advice refusal & empty-retrieval refusal without any LLM call;
+  citation extraction; the no-citation → refusal guard; out-of-range `[N]` ignored; response cache.
+- `controller.RagControllerTest` (3, `@WebMvcTest`, mocked `RagService`) — `/api/chat`,
+  `/api/rag/status`, `/api/rag/reindex` shapes.
+- Existing 8 still green; `SignalsControllerTest` migrated `@MockBean` → `@MockitoBean` (Boot 3.4).
+- `rag.RagLiveIT` (7, `@SpringBootTest`, gated `@EnabledIfEnvironmentVariable RAG_LIVE`) — reindex
+  counts, mechanism retrieves a SOL KB chunk, **cited** mechanism chat, out-of-corpus and advice
+  exact refusals, zero-news (LINK) clean refusal, and the recall eval. Named `*IT`, so it is **not**
+  part of the default `mvn test` (which stays Ollama-free at 39); run it on demand with Ollama up.
+
+### ✅ Live run (free local Ollama) — DoD verified
+
+Done with **€0** spend (local models). To reproduce on any machine — install Ollama + pull the two
+models per `docs/OLLAMA_SETUP.md`, then:
+
+```bash
+docker compose up -d db backend                   # backend reaches host Ollama via host.docker.internal
+curl -s -X POST localhost:8080/api/rag/reindex     # -> {"news":124,"onchain":53,"fundamental":10,"kb":70}
+curl -s localhost:8080/api/rag/status              # same counts
+curl -s -X POST localhost:8080/api/chat -H 'Content-Type: application/json' \
+  -d '{"query":"How does Solana achieve consensus?"}'   # cited answer "[5]" from the SOL KB chunk
+curl -s -X POST localhost:8080/api/chat -H 'Content-Type: application/json' \
+  -d '{"query":"What will BTC be worth in 2030?"}'      # "The available sources do not answer this question."
+curl -s -X POST localhost:8080/api/chat -H 'Content-Type: application/json' \
+  -d '{"query":"Should I buy ETH now?"}'                # "I can summarise what sources are saying, but I cannot give trading advice."
+cd backend && RAG_LIVE=1 mvn -Dtest=RagLiveIT test      # 7/7 + writes reports/retrieval_eval.md
+```
+
+Observed: reindex 257 chunks in ~4s; mechanism chat cites a KB chunk (latency ~7s on `llama3.2:3b`);
+both refusals exact; LINK (no news) refuses cleanly; recall@8 0.90. **OpenAI cost: €0 (not used).**
+
+### Definition of done — checklist
+
+- [x] Code complete: indexer, classifier, retriever, generator, REST, KB (10), eval harness, tests.
+- [x] Backend boots on Spring AI; `vector_store` (768-dim) auto-created & owned by Spring AI;
+      `GET /api/rag/status` works; `ddl-auto: validate` still passes.
+- [x] `POST /api/rag/reindex` populates pgvector; `GET /api/rag/status` shows non-zero counts per
+      source type (news 124 · onchain 53 · fundamental 10 · kb 70).
+- [x] `POST /api/chat` answers a mechanism question with `[N]` citations from KB (verified live).
+- [x] out-of-corpus + trading-advice refused with the exact phrases (live + deterministic guards).
+- [x] a coin with no recent news (LINK) refuses cleanly — no hallucination, no crash.
+- [x] retrieval eval recall@8 = 0.90 (mechanism/fundamental ≥ 0.75, overall ≥ 0.70). Cost **< €5**
+      (€0 — local Ollama).
+- [x] 39 offline tests pass; live `RagLiveIT` 7/7 pass.
+
+### Deviations from the Stage 4 prompt (documented)
+
+1. **Spring Boot bumped 3.3.5 → 3.4.13** — mandatory: Spring AI 1.0.x supports only Boot 3.4.x/3.5.x.
+   Carried `@MockBean` → `@MockitoBean` in `SignalsControllerTest` (the Boot-3.4 replacement).
+2. **Model provider = free local Ollama, not OpenAI** — the brief defaulted to OpenAI
+   (`gpt-4o-mini` + `text-embedding-3-small`, 1536-dim), but the supplied key had no quota
+   (`429 insufficient_quota`). Switched the active provider to local **Ollama** (`llama3.2:3b` +
+   `nomic-embed-text`, **768-dim**) — €0, no key, runs on any PC (`docs/OLLAMA_SETUP.md`). The
+   OpenAI starter stays on the classpath; switch back via `spring.ai.model.{chat,embedding}=openai`
+   + `pgvector.dimensions=1536` + re-index. (The prompt explicitly allowed a free local model.)
+3. **Classifier routes "supply" → KB** (not fundamental/onchain as the prompt lists): supply
+   schedules exist only in the KB; the `fundamentals` table has no supply field, so KB is the only
+   source that can answer supply questions.
+4. **`onchain` is BTC-only** (no ETH in the DB) and **`fundamentals` was empty and was repopulated**
+   (CoinGecko ingest) before indexing. On-chain synthesis is built generically per present symbol.
+5. **Live eval runner is an `*IT` JUnit test** (`RagLiveIT`), gated by the `RAG_LIVE` env var, so it
+   is out of the default `mvn test` (keeps that Ollama-free) and run on demand. Recall@8 (hit@8) is
+   defined per the eval header; news recall is corpus-dependent (sparsity caveat per the brief).
+6. **Unrelated:** while wiring the OpenAI key, the `ETHERSCAN_API_KEY` value in `.env` was
+   accidentally overwritten and could not be recovered (`.env` is gitignored); a placeholder is in
+   place. Not used by Stage 4 (only ETH on-chain ingestion, which the DB doesn't have anyway).
 
 ---
 

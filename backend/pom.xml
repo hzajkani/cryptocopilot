@@ -7,7 +7,8 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <!-- Bumped 3.3.5 -> 3.4.13 for Stage 4: Spring AI 1.0.x requires Spring Boot 3.4.x/3.5.x. -->
+        <version>3.4.13</version>
         <relativePath/>
     </parent>
 
@@ -21,8 +22,10 @@
         <java.version>21</java.version>
         <!-- ta4j 0.17: stable BarSeries/indicator API used by the TA verdict engine -->
         <ta4j.version>0.17</ta4j.version>
-        <!-- springdoc 2.6.x is the Spring Boot 3.3-compatible line -->
-        <springdoc.version>2.6.0</springdoc.version>
+        <!-- springdoc 2.8.x is the Spring Boot 3.4-compatible line -->
+        <springdoc.version>2.8.17</springdoc.version>
+        <!-- Spring AI 1.0.x GA (Stage 4 RAG): OpenAI chat/embeddings + pgvector store -->
+        <spring-ai.version>1.0.8</spring-ai.version>
     </properties>
 
     <dependencies>
@@ -60,6 +63,26 @@
             <version>${springdoc.version}</version>
         </dependency>
 
+        <!-- ===== Stage 4 RAG: Spring AI 1.0 GA (GA artifact names: spring-ai-starter-*) ===== -->
+        <!-- ACTIVE provider: local Ollama for BOTH chat (llama3.2) and embeddings
+             (nomic-embed-text, 768-dim) — free, no API key. See docs/OLLAMA_SETUP.md.
+             Selected via spring.ai.model.{chat,embedding}=ollama in application.yml. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+        <!-- Kept on the classpath (inactive) so switching back to OpenAI gpt-4o-mini +
+             text-embedding-3-small is just a config flip + re-index. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+        <!-- pgvector VectorStore: Spring AI creates and owns the vector_store table -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
+
         <!-- ===== test ===== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -69,6 +92,20 @@
         <!-- The repository slice test (@DataJpaTest) runs against the running compose `db`,
              read-only. PostgreSQL driver is already on the runtime classpath. -->
     </dependencies>
+
+    <!-- Spring AI BOM pins the spring-ai-* artifact versions (Spring AI is not managed
+         by the Spring Boot parent). -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <plugins>

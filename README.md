@@ -49,7 +49,8 @@ Prerequisites: Docker + Docker Compose. Get a free [CoinGecko Demo](https://www.
 key and a free [Etherscan](https://etherscan.io/apis) key.
 
 ```bash
-# 0. Configure secrets (CoinGecko + Etherscan free keys; OpenAI used from Stage 4)
+# 0. Configure secrets (CoinGecko + Etherscan free keys). The Stage 4 RAG chat runs on a
+#    free local Ollama (no API key) — see docs/OLLAMA_SETUP.md.
 cp .env.example .env && $EDITOR .env
 
 # 1. Start Postgres + pgvector (schema is created from db/init.sql on first boot)

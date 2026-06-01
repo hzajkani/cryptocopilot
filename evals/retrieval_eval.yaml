@@ -1,0 +1,181 @@
+# CryptoCopilot — Stage 4 retrieval eval set.
+#
+# 20 questions across news (8), mechanism (8) and fundamental (4). The runner
+# (backend RagLiveIT.retrievalEval) retrieves top-8 with the rule-based classifier's
+# source_type filter (NO symbol filter — retrieval is judged honestly) and scores a
+# question as a recall@8 "hit" when at least one of the 8 chunks satisfies all of:
+#   - source_type in expected_source_types
+#   - (expected_symbols empty)  OR  chunk.symbol in expected_symbols  OR  an expected
+#     symbol appears in the chunk text
+#   - (expected_keywords empty) OR  at least one expected_keyword appears in the chunk text
+# It also records classifier accuracy vs expected_query_classification.
+#
+# NOTE: news-category recall scales with the news corpus (here ~124 rows over a ~4-day
+# window). Mechanism (KB) and fundamental are stable; news is corpus-dependent.
+
+questions:
+  # ----------------------------- news (8) -----------------------------
+  - id: n1
+    category: news
+    query: "Why is Bitcoin under selling pressure right now?"
+    expected_keywords: ["bitcoin"]
+    expected_symbols: ["BTC"]
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n2
+    category: news
+    query: "What is the current sentiment around Bitcoin?"
+    expected_keywords: ["bitcoin", "sentiment"]
+    expected_symbols: ["BTC"]
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n3
+    category: news
+    query: "What are people saying about XRP this week?"
+    expected_keywords: ["xrp"]
+    expected_symbols: ["XRP"]
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n4
+    category: news
+    query: "What recent SEC enforcement news is there in crypto?"
+    expected_keywords: ["sec", "sues"]
+    expected_symbols: []
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n5
+    category: news
+    query: "Were there any exploits or bridge hacks reported recently?"
+    expected_keywords: ["exploit", "bridge"]
+    expected_symbols: []
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n6
+    category: news
+    query: "What happened with the Iranian crypto seizure?"
+    expected_keywords: ["seized", "iranian", "billion"]
+    expected_symbols: []
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n7
+    category: news
+    query: "Did Circle freeze any USDC recently?"
+    expected_keywords: ["circle", "usdc"]
+    expected_symbols: []
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+  - id: n8
+    category: news
+    query: "What's the latest news involving Trump and crypto legislation?"
+    expected_keywords: ["trump"]
+    expected_symbols: []
+    expected_source_types: ["news"]
+    max_age_days: 14
+    expected_query_classification: news
+
+  # -------------------------- mechanism (8) ---------------------------
+  - id: m1
+    category: mechanism
+    query: "How does Solana achieve consensus?"
+    expected_keywords: ["proof of history", "consensus", "stake"]
+    expected_symbols: ["SOL"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m2
+    category: mechanism
+    query: "What consensus mechanism does Bitcoin use?"
+    expected_keywords: ["proof of work", "sha-256", "nakamoto"]
+    expected_symbols: ["BTC"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m3
+    category: mechanism
+    query: "How does Ethereum's proof-of-stake work?"
+    expected_keywords: ["proof of stake", "validator", "stake"]
+    expected_symbols: ["ETH"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m4
+    category: mechanism
+    query: "What is Bitcoin's maximum supply?"
+    expected_keywords: ["21 million", "halving", "supply"]
+    expected_symbols: ["BTC"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m5
+    category: mechanism
+    query: "Explain Cardano's Ouroboros staking model."
+    expected_keywords: ["ouroboros", "stake", "delegate"]
+    expected_symbols: ["ADA"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m6
+    category: mechanism
+    query: "What is the use case for Chainlink?"
+    expected_keywords: ["oracle", "data", "feed"]
+    expected_symbols: ["LINK"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m7
+    category: mechanism
+    query: "How does Polkadot connect parachains?"
+    expected_keywords: ["parachain", "relay chain", "interoperab"]
+    expected_symbols: ["DOT"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+  - id: m8
+    category: mechanism
+    query: "What are the key risks of Avalanche?"
+    expected_keywords: ["risk", "competition", "subnet"]
+    expected_symbols: ["AVAX"]
+    expected_source_types: ["kb"]
+    max_age_days: null
+    expected_query_classification: kb
+
+  # ------------------------- fundamental (4) --------------------------
+  - id: f1
+    category: fundamental
+    query: "How many GitHub commits has Solana had in the last 4 weeks?"
+    expected_keywords: ["github", "commits"]
+    expected_symbols: ["SOL"]
+    expected_source_types: ["fundamental"]
+    max_age_days: null
+    expected_query_classification: fundamental
+  - id: f2
+    category: fundamental
+    query: "How has BNB performed over the past 30 days?"
+    expected_keywords: ["30d", "price"]
+    expected_symbols: ["BNB"]
+    expected_source_types: ["fundamental"]
+    max_age_days: null
+    expected_query_classification: fundamental
+  - id: f3
+    category: fundamental
+    query: "What is Bitcoin's recent on-chain transaction activity?"
+    expected_keywords: ["transactions", "addresses", "transfer volume"]
+    expected_symbols: ["BTC"]
+    expected_source_types: ["onchain"]
+    max_age_days: 45
+    expected_query_classification: onchain
+  - id: f4
+    category: fundamental
+    query: "Which coin shows the most developer activity by commits?"
+    expected_keywords: ["commits"]
+    expected_symbols: []
+    expected_source_types: ["fundamental"]
+    max_age_days: null
+    expected_query_classification: fundamental

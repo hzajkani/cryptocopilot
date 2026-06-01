@@ -13,4 +13,7 @@ public interface NewsRepository extends JpaRepository<News, String> {
      * {@code currencies LIKE %SYM%} for items newer than {@code since}, newest first.
      */
     List<News> findByCurrenciesContainingAndTsUtcAfterOrderByTsUtcDesc(String currency, Instant since);
+
+    /** All news, newest first — the corpus indexer turns each row into one chunk. */
+    List<News> findAllByOrderByTsUtcDesc();
 }
