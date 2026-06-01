@@ -4,6 +4,32 @@
 
 ## Current status
 
+**Stage 5 — Paper-trading engine + Analyst aggregator: ✅ COMPLETE** (tagged `stage-5-done`).
+**Phase B (backend) is complete.** Details in the Stage 5 section below; the Stage 4 status it
+builds on is kept beneath it.
+
+- **Paper-trading engine** (`com.cryptocopilot.trading`): long-only, fills on the 1h OHLCV grid with
+  0.05% slippage + 0.1% taker fee, persists the four Java-owned tables. **Verified live**: reset →
+  10,000 USD; MARKET BUY 0.05 BTC filled @ 71,747.75 (open + slippage), fee 3.59; SELL realises the
+  round-trip cost; SELL > held rejected; LIMIT below the bar stays PENDING; `/api/performance`
+  returns the equity curve + Sharpe/Sortino/maxDD/win-rate/fees.
+- **Analyst aggregator** (`com.cryptocopilot.analyst`): deterministic −2..+2 fusion of ML + TA +
+  two-tier FundamentalSnapshot + news → direction/conviction/agreement, with an LLM summary behind a
+  numeric **hallucination guard** that falls back to a deterministic template (so `/api/analyst`
+  works even with Ollama down — which it currently is). **Verified live**: BTC → `healthSource:
+  onchain` (Tier-1), SOL → `healthSource: coingecko` (Tier-2). All 10 coins return; missing-data
+  coins are NEUTRAL/LOW, never crash.
+- **Backtest** over the real window (2025-09-01 → 2026-06-01, 274 daily marks): spec-default
+  **ML-confirmed-by-TA = 0 trades** (single-snapshot ML, no `UP` in a calm regime — documented, not a
+  defect); reconstructable **TA-long-only = 206 trades, Sharpe −1.20, max DD 41%, win 32%, fee drag
+  $203, final $7,045** — an honest, fee-and-regime-driven ≤0 result the DoD explicitly allows.
+  `reports/backtest_strategy_v1.md`.
+- **Tests: 67 offline pass (`mvn test`)** — 39 prior + 28 new (Engine 5, Backtest 2, Analyst 17,
+  HallucinationGuard 4). Gated live IT `BacktestLiveIT` writes the report (`BACKTEST_LIVE=1`).
+- **`ddl-auto: validate` still passes** — the 4 new write-side entities match `db/init.sql`.
+
+---
+
 **Stage 4 — RAG (Spring AI + pgvector + cited chat): ✅ COMPLETE** (tagged `stage-4-done`)
 
 - Phase B of 3 (Java/Spring backend). Containers live: `db`, `ml`, `backend`.
@@ -22,7 +48,7 @@
   the exact phrases; a zero-news coin refuses cleanly. **Retrieval eval recall@8 = 0.90** (news 0.88,
   mechanism 0.88, fundamental 1.00; classifier accuracy 1.00) — `reports/retrieval_eval.md`.
 - **Tests: 39 offline pass (`mvn test`); live `RagLiveIT` 7/7 pass (`RAG_LIVE=1 mvn -Dtest=RagLiveIT test`).**
-- `frontend` (Stage 6) is still a placeholder. Next: **Stage 5** (paper-trading engine + Analyst).
+- `frontend` (Stage 6) is still a placeholder. Stage 5 ✅. Next: **Stage 6** (React frontend).
 - Stage 3 ✅ (`stage-3-done`); Stage 2 ✅ (`stage-2-done`); accepted data-limited macro
   **F1 0.375** / **AUC 0.578** — see those sections below.
 
@@ -33,6 +59,146 @@
 > data-limited ceiling**, not a defect (details below). Accepted by the project
 > owner as the honest result; the pipeline is production-grade, tested, and
 > writing predictions to Postgres.
+
+---
+
+## Stage 5 — what is done (paper trading + the Analyst)
+
+The `backend` gained the two headline pieces of business logic, both deterministic and fully tested.
+New feature packages `com.cryptocopilot.trading` (+ `.domain`, `.backtest`) and
+`com.cryptocopilot.analyst`, mirroring the Stage-4 `rag` package; REST controllers stay in
+`com.cryptocopilot.controller` (the established hybrid). The backend now **writes** the four
+Java-owned tables (`account_state`, `positions`, `trades`, `orders`) — the only tables it writes
+besides Spring AI's `vector_store` (PROJECT.md §3). Still one modular monolith.
+
+### Paper-trading engine (`com.cryptocopilot.trading`)
+
+Long-only, no shorts, no leverage, **no real money** (PROJECT.md §9). The fill math is single-sourced
+in a pure `FillModel` (shared with the backtest): **MARKET** fills at the next 1h bar's open moved by
+**0.05% slippage** (BUY pays `open·1.0005`, SELL gets `open·0.9995`); **LIMIT** fills at the limit
+only when a later 1h bar's range covers it, else stays `PENDING`; **0.1% taker fee** on every fill.
+At the live edge (no future bar) a live order fills against the latest 1h bar — the deterministic
+present-time proxy. All knobs are in `cryptocopilot.trading.*` (`application.yml`). `MetricsCalculator`
+(pure) computes Sharpe/Sortino (annualised ×√365), max drawdown, win rate, avg win/loss, total
+trades, total fees over the `account_state` equity curve. `PaperTradingEngine` persists everything;
+`account_state` is written only by a single `snapshot(ts, cash)` so the equity curve never records a
+half-applied fill.
+
+**Verified live** (`docker compose up -d`, db + backend):
+
+| step | result |
+|---|---|
+| `POST /api/account/reset` | cash = equity = 10,000 USD |
+| `POST /api/orders` BUY 0.05 BTC MARKET | FILLED @ **71,747.75** (open + 5 bps), fee **3.59**, realizedPnl 0 |
+| `GET /api/positions` | BTC size 0.05, avgEntry 71,747.75 |
+| `POST /api/orders` SELL 0.02 BTC MARKET | FILLED, realizedPnl **−2.87** (round-trip slippage + fees on a flat bar) |
+| SELL 99 BTC | **CANCELLED** — "SELL quantity 99 exceeds held 0.03 (long-only, no shorts)" |
+| LIMIT BUY ETH @ 1 | **PENDING** — "limit 1.0000 not reached on bar [1964.64, 1977.34]" |
+| `GET /api/performance` | equity curve + metrics (Sharpe/Sortino/maxDD/win-rate/fees/total return) |
+
+### Two-tier FundamentalSnapshot (`com.cryptocopilot.analyst.FundamentalSnapshot`)
+
+Pure rule-based health, deterministic. **Tier 1 — on-chain** (real daily series): 7-day MA of active
+addresses + transfer volume, recent window vs prior — both rising → IMPROVING, both falling →
+DETERIORATING, else STABLE (`healthSource="onchain"`). **Only BTC qualifies** — it has the daily
+blockchain.com series; ETH's on-chain rows are a single snapshot of different metrics
+(`eth_supply`/`eth2_staking`/…), so **ETH correctly falls through to Tier 2**. **Tier 2 — CoinGecko**
+(the other 9): the within-snapshot rule on the latest `fundamentals` row (7d momentum ±5%, dev
+activity `github_commit_count_4w` >20 / ≤5, 24h market-cap ±3%), ≥2 positive & 0 negative → IMPROVING,
+≥2 negative & 0 positive → DETERIORATING, else STABLE (`healthSource="coingecko"`). **Tier 3** →
+`UNKNOWN`/`unknown`. Plus universe-relative market **dominance** + 7-day trend from `market_meta`, and
+recency-weighted 7-day **news sentiment** (`POSITIVE`/`MIXED`/`NEGATIVE`/`INSUFFICIENT_DATA`).
+
+### Analyst aggregator (`com.cryptocopilot.analyst`)
+
+Deterministic −2..+2 scoring (`AnalystScorer`, pure): **ML** (UP/DOWN ±2 if calibrated confidence ≥ τ
+else ±1, FLAT 0; τ=0.50 configurable; the stored `pred_class` is trusted, never re-argmaxed); **TA**
+(BULLISH/BEARISH ×STRONG/MODERATE → ±2/±1); **fundamental health** (±1/0); **news** (±1/0). Combined
+−6..+6 → `direction` (≥+3 LEAN_BULLISH, ≤−3 LEAN_BEARISH, opposite-sign inputs → CONFLICTED, else
+NEUTRAL), `conviction` (|sum|≥4 HIGH, 2–3 MEDIUM, else LOW), `agreementScore = 1 − variance/maxVar`.
+The **summary** is phrased by the LLM (Spring AI, same `LlmClient` seam as RAG) but every number in it
+must appear in the inputs — a **hallucination guard** (`isGrounded`) rejects any invented number, and
+any guard failure / LLM error / empty reply falls back to a deterministic template. With Ollama
+offline the template path is exercised and `/api/analyst` still works.
+
+**Live samples** (Ollama down → guarded template summaries):
+
+- **BTC** (on-chain) → `direction=NEUTRAL`, `conviction=LOW`, `healthSource="onchain"`,
+  health STABLE ("7d-MA active addresses falling, 7d-MA transfer volume rising"), dominance 75.0%
+  FALLING, news MIXED, 3 cited headlines. Scores: ML FLAT 0, TA BEARISH/MODERATE −1, fundamental 0,
+  news 0 → combined −1, agreement 0.95.
+- **SOL** (CoinGecko) → `direction=LEAN_BEARISH`, `conviction=MEDIUM`, `healthSource="coingecko"`.
+  Scores: ML DOWN@0.30 −1, TA BEARISH/STRONG −2 → combined −3, agreement 0.83.
+
+Every response carries the persistent disclaimer and surfaces `healthSource` at the top level.
+
+### Backtest (`com.cryptocopilot.trading.backtest`)
+
+`Strategy` interface over a `SignalRow`; pure `PortfolioSimulator` walks a daily grid, recomputes the
+TA verdict from 4h `ohlcv` up to each day (leakage-safe), fills via `FillModel`, marks daily.
+Real window **2025-09-01 → 2026-06-01 (274 marks)**, start $10,000, $1,000/entry:
+
+| strategy | trades | final | total return | Sharpe | Sortino | max DD | win rate | fees |
+|---|---|---|---|---|---|---|---|---|
+| **ML-confirmed-by-TA** (spec default) | 0 | $10,000.00 | 0.00% | 0.000 | 0.000 | 0.00% | 0.00% | $0.00 |
+| **TA-long-only** (reconstructable) | 206 | $7,044.76 | −29.54% | −1.201 | −1.603 | 40.97% | 32.35% | $203.23 |
+
+**Why the default makes 0 trades (honest, documented):** `predictions` holds a single *latest* ML
+snapshot per coin (the ML batch job writes only the current forecast — PROJECT.md §2), so there is no
+historical ML series to drive "ML-confirmed-by-TA" bar-by-bar; the latest snapshot is held constant,
+and in this calm/down regime no coin is `UP` with `prob_up>0.55`. The TA-only proxy (fully
+reconstructable from `ohlcv`) carries the substantive curve and is **honestly negative** — fees + a
+choppy regime chop a naive enter-BULLISH/exit-BEARISH strategy; the DoD explicitly accepts a Sharpe ≤
+0 with an explanation. The point of Stage 5 is a correct, single-sourced fill + metrics engine, not
+alpha. `reports/backtest_strategy_v1.md`; regenerate with `BACKTEST_LIVE=1 mvn -Dtest=BacktestLiveIT test`.
+
+### REST (Swagger tags "Analyst", "Paper trading")
+
+`GET /api/analyst`, `GET /api/analyst/{symbol}`, `POST /api/orders`, `GET /api/positions`,
+`GET /api/orders`, `GET /api/trades`, `GET /api/account`, `GET /api/performance`,
+`POST /api/account/reset`.
+
+### Tests — 67 offline pass (`mvn test`); 28 new
+
+- `trading.EngineTest` (5) — MARKET BUY avg-entry + fees; SELL realized P&L; LIMIT below low PENDING;
+  LIMIT within range fills at limit; SELL > held rejected. Mockito, no DB.
+- `trading.backtest.BacktestTest` (2) — default strategy enters-then-exits on a 1-month fixture
+  (equity-curve shape, one winning round trip); and makes **0 trades when ML never says UP**.
+- `analyst.AnalystTest` (17) — scorer golden scenarios (all-bullish, all-bearish, conflicted, neutral,
+  missing-everything, low-confidence ±1, MEDIUM/LEAN boundary); both tier-health helpers; and
+  `healthSource` routing (onchain / coingecko / unknown).
+- `analyst.HallucinationGuardTest` (4) — invented number → fallback; grounded summary verbatim; LLM
+  error → fallback; `isGrounded` unit checks.
+- `trading.backtest.BacktestLiveIT` (gated `BACKTEST_LIVE`) — real-window run + report, like `RagLiveIT`.
+
+### Deviations from the Stage 5 prompt (documented)
+
+1. **Default-strategy backtest = 0 trades** (single-snapshot ML, no `UP` in a calm regime). The spec's
+   ML-confirmed-by-TA needs a historical ML series that does not exist (ML writes only the latest
+   forecast — PROJECT.md §2). Run it anyway (0 trades, documented) and add a **TA-long-only**
+   reconstructable proxy for the substantive curve. DoD allows a ≤0 result with explanation.
+2. **ETH on-chain → Tier 2.** The brief lists Tier 1 as "BTC, ETH only", but ETH's on-chain data is a
+   single snapshot of supply/staking metrics (no active-addresses/transfer-volume daily series), so
+   ETH falls to Tier 2 (CoinGecko) — the generic "needs a real series" rule the spec's missing-onchain
+   scenario already anticipates. Only BTC is Tier 1 today.
+3. **Analyst news citations come from a deterministic recency query** over the `news` table (symbol-
+   tagged, ≤7d), not the semantic retriever — keeps the Analyst fully deterministic and independent of
+   the embedding model's availability (PROJECT.md §9). Sparse tagged news → often `INSUFFICIENT_DATA`.
+4. **Summary uses the deterministic fallback** in this environment because Ollama is offline; the
+   guarded LLM path is wired and unit-tested, and switches on when a model is available.
+5. **Market dominance is universe-relative** (share of the 10-coin total market cap) — global total
+   crypto cap is not ingested. BTC ≈ 75% of the 10-coin universe.
+
+### Definition of done — checklist
+
+- [x] `docker compose up -d` → backend serves the Analyst + trading endpoints (verified live).
+- [x] `GET /api/analyst` → structured opinion + reasoning + citations + `healthSource` for all 10;
+      missing-data coins NEUTRAL/LOW, no crash.
+- [x] `POST /api/orders` BUY → position created, trade logged, fees applied; `GET /api/performance`
+      → equity curve + metrics (verified live).
+- [x] Default-strategy backtest over the real window → documented honest explanation (0 trades;
+      TA proxy Sharpe −1.20) in this file + `reports/backtest_strategy_v1.md`.
+- [x] All tests pass (67), incl. every missing-data Analyst scenario and the hallucination guard.
 
 ---
 

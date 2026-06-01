@@ -8,12 +8,13 @@ deterministic technical-analysis verdict, a fundamental snapshot, and a cited RA
 news + on-chain + a knowledge base — into one explainable **Analyst** opinion, and lets you
 act with a paper trade. Decision-support, **not** financial advice.
 
-> **Stages 1–2 of 7 are complete.** This repo currently contains the infrastructure
-> (`db` + `ml` containers) and the **Python data + ML service**: it ingests all five public
-> sources into Postgres (Stage 1) and trains a calibrated XGBoost direction classifier that
-> writes predictions back to Postgres (Stage 2). No Java backend yet (Stage 3), no frontend
-> yet (Stage 6). See [`PROJECT.md`](PROJECT.md) for the frozen spec and
-> [`STATE.md`](STATE.md) for live status.
+> **Stages 1–5 of 7 are complete — Phase B (the Java backend) is done.** The `db` + `ml`
+> containers ingest all five public sources into Postgres (Stage 1) and train a calibrated
+> XGBoost direction classifier that writes predictions back (Stage 2). The **Spring Boot
+> `backend`** serves market data + fused ML/TA signals + the ta4j TA verdict (Stage 3), a cited
+> RAG **Researcher** over the corpus (Stage 4), and the **Analyst** opinion + long-only
+> **paper-trading** engine (Stage 5). Next: the React `frontend` (Stage 6). See
+> [`PROJECT.md`](PROJECT.md) for the frozen spec and [`STATE.md`](STATE.md) for live status.
 
 ## Architecture — four containers, one shared database
 
@@ -200,11 +201,18 @@ docker compose exec db psql -U cc -d cryptocopilot -c \
 ### Tests
 
 ```bash
-# in Docker (pytest/ML deps are baked into the image)
+# ml (Python) — in Docker (pytest/ML deps are baked into the image)
 docker compose run --rm ml pytest -q
 
 # the network test hits Binance; skip it offline:
 docker compose run --rm ml pytest -q -m "not network"
+
+# backend (Java) — 67 offline tests (needs the db up for the @DataJpaTest slice)
+cd backend && mvn test
+
+# gated live runs (need the db; RAG also needs a local Ollama):
+RAG_LIVE=1      mvn -Dtest=RagLiveIT test        # RAG retrieval eval  -> reports/retrieval_eval.md
+BACKTEST_LIVE=1 mvn -Dtest=BacktestLiveIT test   # real-window backtest -> reports/backtest_strategy_v1.md
 ```
 
 ## Data sources
@@ -231,9 +239,10 @@ together under the `MATIC` symbol.)
 cryptocopilot/
 ├── PROJECT.md            # frozen spec (do not modify during the build)
 ├── STATE.md              # living handoff between stages — current status + row counts
-├── docker-compose.yml    # db + ml (backend/frontend added in Stages 3 & 6)
+├── docker-compose.yml    # db + ml + backend (frontend added in Stage 6)
 ├── db/init.sql           # the shared schema contract (PROJECT.md §5)
-└── ml/                   # Python data + ML service
+├── reports/              # backend reports: retrieval_eval.md, backtest_strategy_v1.md
+├── ml/                   # Python data + ML service
     ├── models/v1/        # trained bundle + MODEL_CARD (bind-mounted)
     ├── data/processed/   # features_4h.parquet cache (bind-mounted)
     ├── reports/          # SHAP plot + backtest (bind-mounted)
@@ -247,4 +256,11 @@ cryptocopilot/
         ├── train.py      # FETCH-free: train → calibrate → SHAP → save bundle + reports
         ├── predict.py    # latest forecast per coin → predictions + prediction_drivers
         └── scheduler.py  # APScheduler batch-worker entry point (daily ingest + 4h predict)
+└── backend/             # Java/Spring Boot application service (Stages 3–5)
+    └── src/main/java/com/cryptocopilot/
+        ├── controller/  # REST: markets, signals, ta, chat (RAG), analyst, trading
+        ├── service/ entity/ repository/ dto/   # market data + ta4j TA verdict (Stage 3)
+        ├── rag/          # the Researcher: indexer, retriever, grounded generator (Stage 4)
+        ├── analyst/      # FundamentalSnapshot + deterministic Analyst + guarded summary (Stage 5)
+        └── trading/      # long-only paper-trading engine + backtest (Stage 5)
 ```
