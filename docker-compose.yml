@@ -55,9 +55,16 @@ services:
         condition: service_healthy
     ports: ["8080:8080"]
 
+  frontend:
+    build: ./frontend
+    # nginx serves the React build AND reverse-proxies /api -> backend:8080, so
+    # the browser only ever talks to this single origin — no CORS needed on the
+    # Spring Boot side (PROJECT.md §2). See frontend/nginx.conf.
+    depends_on: [ backend ]
+    ports: ["3000:80"]
+
 volumes:
   pgdata:
 
-# NOTE: the `frontend` (React + nginx) service is intentionally omitted until
-# Stage 6. The `backend` (Spring Boot) service was added in Stage 3. See
-# PROJECT.md §7 (build roadmap).
+# All four containers now run: db (Stage 1), ml (Stage 1/2), backend (Stage 3-5),
+# frontend (Stage 6 — React + nginx). See PROJECT.md §7 (build roadmap).
