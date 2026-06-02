@@ -386,12 +386,17 @@ only — no price targets, nothing forward-looking (PROJECT.md §9). → **70 KB
   rest sparse → news-category recall is corpus-dependent and grows with ingestion.
 - `onchain` is **BTC-only** (1,084 rows, 3 daily metrics; **no ETH** — etherscan absent in the DB
   despite Stage 1's note) → **53 weekly BTC chunks**. Built generically over whatever symbols exist.
-- `fundamentals` was found **empty (0 rows)** at the start of this stage (Stage 1's 10 were lost on
-  a volume reset); **restored to 10** via `docker compose run --rm ml python -m
-  ml.ingest.coingecko_fundamentals` (twitter_followers null for all; a few coins lack github
-  code-add/del — log-and-skip, PROJECT.md §9) → **10 fundamental chunks**.
-- **Actual reindex counts (live): news 124 · onchain 53 · fundamental 10 · kb 70 = 257 chunks**
-  (embedded via Ollama in ~4s; verified in `vector_store` and via `GET /api/rag/status`).
+- `fundamentals` comes up **empty (0 rows)** after **any `pgdata` volume reset** — the table is
+  populated only by ingestion, not `db/init.sql` seed data, so a fresh DB has none and the reindexer
+  (correctly) emits **0 fundamental chunks**. This recurred on **2026-06-02** (`/api/rag/status`
+  showed `fundamental:0` after a clean bring-up). **Fix = re-run the ingest, then reindex:**
+  `docker compose run --rm ml python -m ml.ingest.coingecko_fundamentals` (twitter_followers null
+  for all; a few coins lack github code-add/del — log-and-skip, PROJECT.md §9) → 10 rows →
+  `POST /api/rag/reindex` → **10 fundamental chunks**. The scheduled `ml.ingest.run_all` keeps it
+  populated thereafter, but a reindex run on a just-reset DB must be preceded by the ingest.
+- **Reindex counts (live): news 120 · onchain 53 · fundamental 10 · kb 70 = 253 chunks** as of
+  2026-06-02 (`news` drifts with the rolling ingestion window — 124 earlier; the rest are stable).
+  Embedded via Ollama in ~4s; verified in `vector_store` and via `GET /api/rag/status`.
 
 **Retrieval eval:** `evals/retrieval_eval.yaml` — 20 questions (8 news / 8 mechanism / 4
 fundamental), each with `expected_keywords/symbols/source_types`, `max_age_days`,
