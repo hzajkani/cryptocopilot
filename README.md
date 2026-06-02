@@ -1,20 +1,23 @@
 # CryptoCopilot — Polyglot Edition
 
-CryptoCopilot is a personal, **paper-only** crypto trading assistant rebuilt as a polyglot
-system: a Python data + ML service, a Java/Spring Boot application service, and a React
-frontend, arranged as four Docker containers around one shared **Postgres + pgvector**
-database. It fuses four perspectives on each of 10 coins — an ML direction signal, a
-deterministic technical-analysis verdict, a fundamental snapshot, and a cited RAG chat over
-news + on-chain + a knowledge base — into one explainable **Analyst** opinion, and lets you
-act with a paper trade. Decision-support, **not** financial advice.
+[![CI](https://github.com/hzajkani/cryptocopilot/actions/workflows/ci.yml/badge.svg)](https://github.com/hzajkani/cryptocopilot/actions/workflows/ci.yml)
+&nbsp;![paper-only](https://img.shields.io/badge/trading-paper--only-blue)
+&nbsp;![status](https://img.shields.io/badge/release-v1.0-success)
 
-> **Stages 1–5 of 7 are complete — Phase B (the Java backend) is done.** The `db` + `ml`
-> containers ingest all five public sources into Postgres (Stage 1) and train a calibrated
-> XGBoost direction classifier that writes predictions back (Stage 2). The **Spring Boot
-> `backend`** serves market data + fused ML/TA signals + the ta4j TA verdict (Stage 3), a cited
-> RAG **Researcher** over the corpus (Stage 4), and the **Analyst** opinion + long-only
-> **paper-trading** engine (Stage 5). Next: the React `frontend` (Stage 6). See
-> [`PROJECT.md`](PROJECT.md) for the frozen spec and [`STATE.md`](STATE.md) for live status.
+A personal, **paper-only** crypto trading assistant, built as a **polyglot system**: a Python
+data + ML service, a Java/Spring Boot application service, and a React frontend — four Docker
+containers around one shared **Postgres + pgvector** database. It fuses four perspectives on each of
+10 coins — an **ML** direction signal, a deterministic **technical-analysis** verdict, a
+**fundamental** snapshot, and a cited **RAG** chat over news + on-chain + a knowledge base — into one
+explainable **Analyst** opinion, and lets you act with a **paper trade**.
+
+> ⚠️ **Decision-support, not financial advice. Paper trading only — no real money, ever.**
+
+It's deliberately a **portfolio piece**: a production-grade Spring Boot fintech backend (Spring AI,
+ta4j, a paper-trading engine, a deterministic Analyst), ML kept where Python is strongest (XGBoost,
+isotonic calibration, SHAP), and a clean two-language boundary that is **just a shared database** —
+no RPC, no shared model files. The numbers below are **honest** (an ML macro-F1 of 0.375 is presented
+as the deliberate, data-limited result it is) — see [Honest scope](#honest-scope).
 
 ## Architecture — four containers, one shared database
 
@@ -22,7 +25,7 @@ act with a paper trade. Decision-support, **not** financial advice.
                         ┌──────────────────────────────┐
    browser  ─────────►  │  frontend  (React + nginx)   │
                         └───────────────┬──────────────┘
-                                        │ REST / JSON
+                                        │ REST / JSON  (same-origin; nginx proxies /api)
                                         ▼
                         ┌──────────────────────────────┐
                         │  backend  (Spring Boot)      │   ◄── MODULAR MONOLITH
@@ -41,184 +44,112 @@ act with a paper trade. Decision-support, **not** financial advice.
 └──────────────────────────────┘
 ```
 
-The **database is the polyglot boundary**: Python writes its tables, Java reads them — no RPC,
-no shared model files. Each table has exactly one writer (see `PROJECT.md` §3).
+The **database is the polyglot boundary**: Python writes its tables, Java reads them — no RPC, no
+shared model files. Each table has exactly one writer. The backend is a **modular monolith**, not
+microservices, and the ML service is a **batch job**, not a server. The full rationale is one page:
+**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
-## Quickstart
+## Screenshots
 
-Prerequisites: Docker + Docker Compose. Get a free [CoinGecko Demo](https://www.coingecko.com/en/api)
-key and a free [Etherscan](https://etherscan.io/apis) key.
+> _Placeholders — run `make demo`, then drop PNGs into [`docs/img/`](docs/img/) (filenames listed there)._
 
-> **Tip — set your editor once:** the commands below open `.env` with `$EDITOR` (falling back
-> to `nano`). To use VS Code / vim / etc. permanently, add one line to your shell rc:
-> ```bash
-> echo 'export EDITOR=code' >> ~/.zshrc && source ~/.zshrc   # or: nano / vim / "code -w"
-> ```
-
-```bash
-# 0. Configure secrets (CoinGecko + Etherscan free keys). The Stage 4 RAG chat runs on a
-#    free local Ollama (no API key) — see docs/OLLAMA_SETUP.md.
-#    `cp -n` is non-destructive: it will NOT overwrite an existing .env.
-cp -n .env.example .env
-${EDITOR:-nano} .env   # use $EDITOR if set, otherwise fall back to nano
-
-# 1. Start Postgres + pgvector (schema is created from db/init.sql on first boot)
-docker compose up -d db
-
-# 2. Run the full ingestion (OHLCV, market meta, news, on-chain, fundamentals)
-docker compose run --rm ml python -m ml.ingest.run_all
-
-# 3. Inspect the data
-docker compose exec db psql -U cc -d cryptocopilot -c \
-  "SELECT symbol, timeframe, count(*) FROM ohlcv GROUP BY 1,2 ORDER BY 1,2;"
-```
-
-The `ml` container's default command is the APScheduler loop (`python -m ml.scheduler`):
-a daily ingest at 02:00 UTC plus a predict job every 4h that keeps the batch worker alive.
-One-off fetch / train / predict runs are launched on demand with `docker compose run`
-(below).
-
-## Fetch → train → predict
-
-These are the three ML entry points. All three read/write the **same shared Postgres**;
-training also produces local model + report files. Run them in this order the first time
-(`predict` needs both data and a trained model).
-
-| Step | Module | Reads | Writes |
-|---|---|---|---|
-| **Fetch** | `ml.ingest.run_all` | the five public APIs | `ohlcv`, `market_meta`, `news`, `onchain`, `fundamentals` (Postgres) |
-| **Train** | `ml.train` | `ohlcv` (Postgres) | `ml/models/v1/` + `ml/reports/` (files); `ml/data/processed/features_4h.parquet` cache |
-| **Predict** | `ml.predict` | `ohlcv` (Postgres) + `models/v1/` | `predictions`, `prediction_drivers` (Postgres) |
-
-### In Docker (recommended)
-
-```bash
-# 0. one-time: secrets + start the database (schema auto-created from db/init.sql)
-#    `cp -n` will NOT overwrite an existing .env (so re-running this block is safe).
-cp -n .env.example .env
-${EDITOR:-nano} .env   # use $EDITOR if set, otherwise fall back to nano
-docker compose up -d db
-docker compose build ml
-
-# 1. FETCH — ingest all five sources into Postgres (Stage 1)
-docker compose run --rm ml python -m ml.ingest.run_all
-
-# 2. TRAIN — features → XGBoost → Optuna → isotonic calibration → SHAP → backtest
-#    Saves the calibrated bundle to ml/models/v1/ and reports to ml/reports/ (~40s).
-docker compose run --rm ml python -m ml.train
-
-# 3. PREDICT — latest forecast per coin → 10 predictions + 30 driver rows in Postgres
-docker compose run --rm ml python -m ml.predict
-```
-
-The `models/`, `data/`, and `reports/` folders are **bind-mounted** (see
-`docker-compose.yml`), so the model trained by one `compose run` is visible to the next
-`predict` run and inspectable on the host under `ml/models/`, `ml/data/`, `ml/reports/`.
-
-To run fetch + predict automatically on a schedule, just leave the worker up
-(`docker compose up -d ml`); training stays manual.
-
-### Locally (without Docker)
-
-The Python service runs on the host too — only the **database** needs to be up. Point
-`DATABASE_URL` at the Postgres exposed on `localhost:5432` by the `db` container (or any
-Postgres initialised with `db/init.sql`).
-
-```bash
-# Postgres must be reachable; the compose db publishes localhost:5432
-docker compose up -d db
-
-cd ml
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-# macOS only: XGBoost needs the OpenMP runtime (not a pip dependency)
-#   brew install libomp   (or: conda install -c conda-forge llvm-openmp)
-
-# .env (loaded automatically by config.py) — or export inline:
-export DATABASE_URL="postgresql+psycopg2://cc:ccpass@localhost:5432/cryptocopilot"
-
-python -m ml.ingest.run_all   # FETCH
-python -m ml.train            # TRAIN
-python -m ml.predict          # PREDICT
-```
-
-Locally the artifacts land in `ml/models/v1/`, `ml/data/processed/`, and `ml/reports/`
-(the same paths the bind mounts expose). Override the locations with
-`ML_MODELS_DIR` / `ML_REPORTS_DIR` / `ML_DATA_DIR` if needed.
-
-## Where the data is stored
-
-Everything lives in the one shared Postgres database (`cryptocopilot`), **except** the ML
-feature matrix and the trained model, which are Python-internal files — they never cross the
-language boundary, so they are deliberately *not* in the DB (PROJECT.md §3).
-
-### Raw ingested data → Postgres (Python-owned tables)
-
-| Table | One row per | Key columns |
+| Markets | Signals | Analyst |
 |---|---|---|
-| `ohlcv` | candle | `ts_utc, symbol, timeframe`, `open, high, low, close, volume` |
-| `market_meta` | snapshot | `ts_utc, symbol`, `market_cap_usd, circulating_supply, total_supply` |
-| `news` | article | `id` (url hash), `ts_utc, title, summary, source, url, currencies, sentiment, sentiment_score` |
-| `onchain` | metric reading | `ts_utc, symbol, metric, value, source` |
-| `fundamentals` | snapshot | `ts_utc, symbol`, price-change %s, volume, reddit/twitter/github activity |
+| ![Markets](docs/img/markets.png) | ![Signals](docs/img/signals.png) | ![Analyst](docs/img/analyst.png) |
 
-### Predicted data → Postgres (the model's output)
-
-`ml.predict` writes the **latest 4h forecast per coin** (10 coins → 10 + 30 rows) into:
-
-- **`predictions`** — one row per coin. Columns:
-  `ts_utc, symbol, timeframe` (= `4h`), `pred_class` (`UP` / `DOWN` / `FLAT`),
-  `prob_up, prob_down, prob_flat` (calibrated probabilities), `model_version` (`v1`),
-  `created_at`.
-- **`prediction_drivers`** — the **top-3 SHAP drivers** behind each prediction (3 rows per
-  coin). Columns: `ts_utc, symbol, timeframe, rank` (1–3), `feature_name`, `feature_value`,
-  `shap_value`.
-
-Both are **upserts** keyed on `(ts_utc, symbol, timeframe[, rank])`, so re-running `predict`
-refreshes in place rather than duplicating. Inspect them with:
-
-```bash
-docker compose exec db psql -U cc -d cryptocopilot -c \
-  "SELECT symbol, pred_class, prob_up, prob_down, prob_flat, model_version
-     FROM predictions ORDER BY symbol;"
-
-docker compose exec db psql -U cc -d cryptocopilot -c \
-  "SELECT symbol, rank, feature_name, shap_value
-     FROM prediction_drivers ORDER BY symbol, rank;"
-```
-
-### Model + features → local files (not in the DB)
-
-| Path | What |
+| Researcher (chat) | Performance |
 |---|---|
-| `ml/data/processed/features_4h.parquet` | engineered feature matrix cache (46 features, long format) |
-| `ml/models/v1/bundle.joblib` | calibrated XGBoost bundle (model + decision weights + feature list) |
-| `ml/models/v1/meta.json` | model metadata (version, metrics) |
-| `ml/models/v1/MODEL_CARD.md` | human-readable model card |
-| `ml/reports/shap_summary.png` | SHAP beeswarm plot |
-| `ml/reports/backtest_v1_summary.md` / `backtest_v1.parquet` | out-of-sample backtest |
+| ![Chat](docs/img/chat.png) | ![Performance](docs/img/performance.png) |
 
-### Tests
+## Quickstart — `make demo`
+
+**Prerequisites:** Docker + Docker Compose. Two free API keys:
+[CoinGecko Demo](https://www.coingecko.com/en/api) and [Etherscan](https://etherscan.io/apis).
+**Optional:** a local [Ollama](docs/OLLAMA_SETUP.md) for the cited chat + LLM-phrased Analyst
+summaries (everything still works without it — see [below](#ollama-up-or-down)).
 
 ```bash
-# ml (Python) — in Docker (pytest/ML deps are baked into the image)
-docker compose run --rm ml pytest -q
+# 1. Configure secrets (cp -n will NOT overwrite an existing .env)
+cp -n .env.example .env
+$EDITOR .env          # add COINGECKO_API_KEY + ETHERSCAN_API_KEY
 
-# the network test hits Binance; skip it offline:
-docker compose run --rm ml pytest -q -m "not network"
-
-# backend (Java) — 67 offline tests (needs the db up for the @DataJpaTest slice)
-cd backend && mvn test
-
-# gated live runs (need the db; RAG also needs a local Ollama):
-RAG_LIVE=1      mvn -Dtest=RagLiveIT test        # RAG retrieval eval  -> reports/retrieval_eval.md
-BACKTEST_LIVE=1 mvn -Dtest=BacktestLiveIT test   # real-window backtest -> reports/backtest_strategy_v1.md
+# 2. One command: up + ingest + train + predict + reindex + seed a few paper trades
+make demo
 ```
+
+`make demo` brings up `db` + `backend` + `frontend` (waiting on healthchecks), ingests the five
+public data sources, trains the calibrated model, writes predictions + SHAP drivers, builds the RAG
+index, and seeds a handful of illustrative paper trades — so **Markets, Signals, Analyst, Chat, Paper
+Trades and Performance are all non-empty** on first look.
+
+> ⏱️ **One-time cost:** the ingest + train steps take a few minutes (a network crawl + a model fit).
+> Subsequent `docker compose up` is instant. Run `make help` to see all targets.
+
+When it finishes:
+
+| | URL |
+|---|---|
+| **Frontend** | <http://localhost:3000> |
+| **API docs (Swagger UI)** | <http://localhost:8080/swagger-ui.html> |
+| **Health** | <http://localhost:8080/actuator/health> |
+
+### Ollama up or down
+
+The Researcher chat and the LLM-phrased Analyst summary use a **free local Ollama**
+(`llama3.2:3b` + `nomic-embed-text`). The demo works **either way**:
+
+- **Ollama up** → chat returns **cited** answers; the Analyst summary is LLM-phrased (behind a
+  numeric hallucination guard); `make demo` builds the RAG index.
+- **Ollama down** → chat **refuses cleanly** (it can't embed the query); the Analyst falls back to a
+  **deterministic template** summary; the RAG-index step is skipped (not fatal). Markets, Signals,
+  Analyst, Paper Trades and Performance are fully populated regardless.
+
+To enable the rich path later: install Ollama + pull the two models ([`docs/OLLAMA_SETUP.md`](docs/OLLAMA_SETUP.md)),
+then `make reindex`.
+
+## Manual setup (the individual commands)
+
+`make demo` is just this sequence — run the pieces by hand if you prefer:
+
+```bash
+cp -n .env.example .env && $EDITOR .env        # secrets
+docker compose up -d --build --wait db backend frontend
+
+docker compose run --rm ml python -m ml.ingest.run_all   # FETCH  → ohlcv/market_meta/news/onchain/fundamentals
+docker compose run --rm ml python -m ml.train            # TRAIN  → ml/models/v1/ (+ reports)
+docker compose run --rm ml python -m ml.predict          # PREDICT→ predictions + prediction_drivers
+
+curl -X POST localhost:8080/api/rag/reindex              # build the pgvector index (needs Ollama)
+bash scripts/seed_demo_trades.sh                          # seed a few illustrative paper trades
+```
+
+The `ml` container's default command is an **APScheduler** worker (daily ingest + a predict every
+4h); training stays manual. `ml/models/`, `ml/data/`, `ml/reports/` are **bind-mounted**, so a model
+trained by one `compose run` is visible to the next `predict` and inspectable on the host.
+
+## Honest scope
+
+The point is production-grade polyglot **engineering**, not beating the market. These results are
+presented as the deliberate, documented outcomes they are (PROJECT.md §9):
+
+| Layer | Result | Note |
+|---|---|---|
+| **ML** 3-class direction | macro **F1 0.375** · **AUC 0.578** · **Brier 0.606** | F1 is below the 0.40 stretch gate — a **data-limited** ceiling (~2y of OHLCV), investigated (not leakage, not the decision rule). AUC + Brier pass. |
+| **RAG** retrieval | **recall@8 = 0.90** · 100% citation rate | strict grounding; refuses out-of-corpus questions + trading advice with fixed phrases. ≈ €0 (local Ollama). |
+| **Paper-trading** backtest | default **0 trades**; TA proxy **Sharpe −1.20** | the default needs a historical ML series that doesn't exist (single-snapshot ML); the TA proxy is an honest fee-and-regime-driven ≤0. |
+
+The intelligence layer is documented in three interview-ready cards:
+**[Model card](docs/MODEL_CARD.md)** · **[RAG card](docs/RAG_CARD.md)** · **[Analyst card](docs/ANALYST_CARD.md)**.
+
+**Hard rules (never broken):** no real money, ever — paper only. Crypto only; no shorts, no leverage.
+The Analyst may only synthesise facts present in its four inputs (a hallucination guard falls back to
+a deterministic template). A persistent **decision-support, not financial advice** disclaimer on every
+page. Multi-source data by design; log-and-skip on any source failure.
 
 ## Data sources
 
-All sources are public and free. If a source goes paid or down, the pipeline **logs and skips**
-it — it never crashes (PROJECT.md §9).
+All sources are public and free. If a source goes paid or down, the pipeline **logs and skips** it —
+it never crashes (PROJECT.md §9).
 
 | Source | Used for | Auth |
 |---|---|---|
@@ -229,9 +160,54 @@ it — it never crashes (PROJECT.md §9).
 | Etherscan | ETH on-chain | free key, 5/sec, 100k/day |
 | Curated KB | coin mechanism / tokenomics markdown (Stage 4) | — |
 
-**Assets (10):** BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, LINK, MATIC/POL.
-(MATIC was rebranded POL in late 2024; the OHLCV loader stitches `MATIC/USDT` and `POL/USDT`
-together under the `MATIC` symbol.)
+**Assets (10):** BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, LINK, MATIC/POL. (MATIC was rebranded POL
+in late 2024; the OHLCV loader stitches `MATIC/USDT` and `POL/USDT` under the `MATIC` symbol.)
+
+## Table ownership — exactly one writer per table
+
+The shared DB stays clean by **strict table ownership** (PROJECT.md §3). Java never writes Python's
+tables; Python never writes Java's. The frontend holds no business logic — it only reads backend REST.
+
+| Container | Owns / writes | Reads |
+|---|---|---|
+| **ml** (Python) | `ohlcv`, `market_meta`, `news`, `onchain`, `fundamentals`, `predictions`, `prediction_drivers` | its own tables |
+| **backend** (Java) | `account_state`, `positions`, `trades`, `orders`, the Spring-AI `vector_store` | all of ml's tables (read-only) |
+| **frontend** (React) | — | backend REST only |
+
+## The build story — 7 stages, one tag each
+
+Built in 7 stages across 3 phases; each closes with a `STATE.md` update and a git tag. The
+[`PROJECT.md`](PROJECT.md) frozen spec and [`STATE.md`](STATE.md) living handoff tell the full story.
+
+| Stage | Phase | Deliverable | Tag |
+|---|---|---|---|
+| 1 | A · data+ML | Monorepo + compose + Postgres/pgvector + schema + all ingestion | [`stage-1-done`](https://github.com/hzajkani/cryptocopilot/tree/stage-1-done) |
+| 2 | A · data+ML | XGBoost + isotonic calibration + SHAP → `predictions` (batch worker) | [`stage-2-done`](https://github.com/hzajkani/cryptocopilot/tree/stage-2-done) |
+| 3 | B · backend | Spring Boot REST over the data + ta4j TA verdict | [`stage-3-done`](https://github.com/hzajkani/cryptocopilot/tree/stage-3-done) |
+| 4 | B · backend | RAG (Spring AI + pgvector): indexed corpus, cited grounded chat | [`stage-4-done`](https://github.com/hzajkani/cryptocopilot/tree/stage-4-done) |
+| 5 | B · backend | Paper-trading engine + deterministic Analyst aggregator | [`stage-5-done`](https://github.com/hzajkani/cryptocopilot/tree/stage-5-done) |
+| 6 | C · frontend | React app (Markets, Signals, Analyst, Chat, Paper Trades, Performance) | [`stage-6-done`](https://github.com/hzajkani/cryptocopilot/tree/stage-6-done) |
+| 7 | D · polish | Demo mode, README, cards, Docker hardening, CI, **v1.0** | [`v1.0`](https://github.com/hzajkani/cryptocopilot/releases/tag/v1.0) |
+
+## Tests
+
+```bash
+# ml (Python) — offline suite (skip the Binance network test)
+docker compose run --rm ml pytest -q -m "not network"
+
+# backend (Java) — offline suite. The repository slice (OhlcvRepositoryTest) needs the running
+# db with ingested data; exclude it when the stack is down:
+cd backend && mvn -q test -Dtest='!OhlcvRepositoryTest'   # or plain `mvn test` with `db` up + seeded
+
+# frontend (TypeScript/React)
+cd frontend && npm ci && npm run build && npm test
+
+# gated live runs (need the db; RAG also needs a local Ollama):
+RAG_LIVE=1      mvn -Dtest=RagLiveIT test        # RAG retrieval eval   → reports/retrieval_eval.md
+BACKTEST_LIVE=1 mvn -Dtest=BacktestLiveIT test   # real-window backtest → reports/backtest_strategy_v1.md
+```
+
+CI (`.github/workflows/ci.yml`) runs the three offline suites on every push (the badge above).
 
 ## Repo layout
 
@@ -239,28 +215,24 @@ together under the `MATIC` symbol.)
 cryptocopilot/
 ├── PROJECT.md            # frozen spec (do not modify during the build)
 ├── STATE.md              # living handoff between stages — current status + row counts
-├── docker-compose.yml    # db + ml + backend (frontend added in Stage 6)
+├── README.md             # this file
+├── Makefile              # `make demo`, plus up/down/ingest/train/predict/reindex/seed/test
+├── docker-compose.yml    # db + ml + backend + frontend (healthchecks + depends_on)
+├── scripts/              # demo.sh (one-command demo) + seed_demo_trades.sh
+├── docs/                 # ARCHITECTURE.md + MODEL_CARD / RAG_CARD / ANALYST_CARD + OLLAMA_SETUP + img/
 ├── db/init.sql           # the shared schema contract (PROJECT.md §5)
-├── reports/              # backend reports: retrieval_eval.md, backtest_strategy_v1.md
-├── ml/                   # Python data + ML service
-    ├── models/v1/        # trained bundle + MODEL_CARD (bind-mounted)
-    ├── data/processed/   # features_4h.parquet cache (bind-mounted)
-    ├── reports/          # SHAP plot + backtest (bind-mounted)
-    └── ml/
-        ├── config.py     # assets, timeframes, RSS sources, CoinGecko ids, paths
-        ├── db.py         # SQLAlchemy engine + idempotent upserts
-        ├── ingest/       # binance, coingecko_market, rss_news, onchain, coingecko_fundamentals, run_all
-        ├── features/     # indicators, ichimoku (from scratch), calendar, build → parquet
-        ├── modelling/    # splits, xgb_model, tune (Optuna), calibrate, backtest, metrics
-        ├── explain.py    # SHAP TreeExplainer → top-3 drivers
-        ├── train.py      # FETCH-free: train → calibrate → SHAP → save bundle + reports
-        ├── predict.py    # latest forecast per coin → predictions + prediction_drivers
-        └── scheduler.py  # APScheduler batch-worker entry point (daily ingest + 4h predict)
-└── backend/             # Java/Spring Boot application service (Stages 3–5)
+├── reports/              # retrieval_eval.md, backtest_strategy_v1.md
+├── ml/                   # Python data + ML service (ingest, features, modelling, predict, scheduler)
+└── backend/             # Java/Spring Boot service (data, ta, rag, analyst, trading, web)
     └── src/main/java/com/cryptocopilot/
-        ├── controller/  # REST: markets, signals, ta, chat (RAG), analyst, trading
-        ├── service/ entity/ repository/ dto/   # market data + ta4j TA verdict (Stage 3)
+        ├── controller/ service/ entity/ repository/ dto/   # market data + ta4j TA verdict (Stage 3)
         ├── rag/          # the Researcher: indexer, retriever, grounded generator (Stage 4)
         ├── analyst/      # FundamentalSnapshot + deterministic Analyst + guarded summary (Stage 5)
-        └── trading/      # long-only paper-trading engine + backtest (Stage 5)
+        ├── trading/      # long-only paper-trading engine + backtest (Stage 5)
+        └── web/          # global exception handler → clean JSON errors (Stage 7)
 ```
+
+---
+
+*CryptoCopilot is a personal project and a portfolio piece. **Decision-support, not financial advice;
+paper trading only.***

@@ -54,14 +54,31 @@ services:
       db:
         condition: service_healthy
     ports: ["8080:8080"]
+    # Actuator health gate so `make demo` (and the frontend below) only proceed once the
+    # backend is actually serving. start_period covers Spring Boot boot + JPA validate (~5s).
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   frontend:
     build: ./frontend
     # nginx serves the React build AND reverse-proxies /api -> backend:8080, so
     # the browser only ever talks to this single origin — no CORS needed on the
     # Spring Boot side (PROJECT.md §2). See frontend/nginx.conf.
-    depends_on: [ backend ]
+    depends_on:
+      backend:
+        condition: service_healthy
     ports: ["3000:80"]
+    # busybox wget ships in nginx:alpine — a plain 200 on / proves nginx is serving the SPA.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   pgdata:

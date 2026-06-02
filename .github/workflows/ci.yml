@@ -1,0 +1,59 @@
+name: CI
+
+# Build each of the three services and run its OFFLINE test suite. We deliberately skip the
+# live/network/Ollama-gated tests (PROJECT.md §9 / Stage 7 brief): the ML `network` marker, the
+# backend `*IT` live tests (RagLiveIT, BacktestLiveIT — env-gated, not run by `mvn test`), and the
+# data-dependent repository slice (OhlcvRepositoryTest needs the running stack with ingested data).
+on:
+  push:
+  pull_request:
+
+jobs:
+  ml:
+    name: ml — build image + pytest (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the ml image
+        run: docker build -t cryptocopilot-ml ./ml
+      - name: Run the offline Python tests
+        run: docker run --rm cryptocopilot-ml pytest -q -m "not network"
+
+  backend:
+    name: backend — build + mvn test (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build the backend (package, skip tests)
+        run: mvn -q -B -DskipTests package
+        working-directory: backend
+      - name: Run the offline test suite
+        # Excludes the data-dependent repository slice (runs locally with the stack up); the
+        # *IT live tests are not part of the surefire `test` phase.
+        run: mvn -q -B test -Dtest='!OhlcvRepositoryTest'
+        working-directory: backend
+
+  frontend:
+    name: frontend — tsc + vite build + vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Type-check + bundle (tsc --noEmit && vite build)
+        run: npm run build
+        working-directory: frontend
+      - name: Run the Vitest suite
+        run: npm test
+        working-directory: frontend
