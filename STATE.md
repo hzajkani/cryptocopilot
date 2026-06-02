@@ -40,8 +40,9 @@ documented results they are, not dressed up.
   `web.GlobalExceptionHandlerTest`) and the exact CI offline command
   (`mvn test -Dtest='!OhlcvRepositoryTest'`) is **BUILD SUCCESS** (the two live ITs skip via their env
   gate); **frontend** `tsc --noEmit` + `vite build` clean + **3/3 Vitest**; **ml** `pytest -m "not
-  network"` **12 passed** (1 network test deselected). `docker compose config` validates and the
-  **backend image builds** with the curl + non-root changes. Details in the Stage 7 section below.
+  network"` **12 passed** (1 network test deselected). On the **live stack**, both **backend and
+  frontend report `healthy`**, Swagger UI returns **200**, and the global exception handler returns
+  **clean JSON** on a bad request. Details in the Stage 7 section below.
 
 ---
 
@@ -176,10 +177,13 @@ clone. Honest metrics are presented as the deliberate results they are, not infl
 
 ### Docker + repo hardening
 
-- **Healthchecks** — backend `CMD curl -fsS http://localhost:8080/actuator/health` (curl installed in
-  the JRE runtime stage; `start_period: 40s`); frontend `wget -qO- http://localhost/` (busybox, in
+- **Healthchecks** — backend `CMD curl -fsS http://127.0.0.1:8080/actuator/health` (curl installed in
+  the JRE runtime stage; `start_period: 40s`); frontend `wget -qO- http://127.0.0.1/` (busybox, in
   `nginx:alpine`). `db` already had one. **`depends_on: { condition: service_healthy }`** chained
   db → backend → frontend, so `make demo` ordering is reliable and `up --wait` returns only when healthy.
+  *(Uses `127.0.0.1`, not `localhost`: inside the container `localhost` can resolve to IPv6 `[::1]`
+  where the IPv4-bound server isn't listening, and busybox `wget` doesn't fall back — caught live, the
+  frontend went `unhealthy` with `localhost` and `healthy` with `127.0.0.1`.)*
 - **Global exception handler** — `com.cryptocopilot.web.GlobalExceptionHandler` (`@RestControllerAdvice`)
   + `web.ApiError` record → clean JSON `{error, message, status}`: `IllegalArgumentException` /
   type-mismatch / unreadable body → **400**, `NoSuchElementException` → **404**, `ResponseStatusException`
@@ -210,8 +214,12 @@ local full `mvn test` with `db` up, which still passes 70/70).
 - **frontend** — `npm run build` (`tsc --noEmit && vite build`) clean (no warnings; app 37 kB) +
   **3/3 Vitest**.
 - **ml** — `pytest -q -m "not network"` → **12 passed**, 1 deselected.
-- **docker** — `docker compose config` validates the healthchecks + `depends_on`; the **backend image
-  builds** with curl + the non-root user (warning-free).
+- **docker (live)** — `docker compose config` validates; the **backend image builds** with curl + the
+  non-root user (warning-free); bringing up `db → backend → frontend`, **both backend and frontend
+  report `healthy`**. Live on the running stack: `GET /actuator/health` UP, **Swagger UI 200** (6 tags),
+  `GET /api/markets` → 10, nginx `:3000` serves the SPA (200) and proxies `/api/markets` → 10, and the
+  **global exception handler returns clean JSON** (`{"error":"Bad Request",…,"status":400}`) on a
+  malformed order body — confirming the advice resolves in the real app context, not just the unit test.
 
 ### Definition of done — checklist
 

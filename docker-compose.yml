@@ -57,7 +57,9 @@ services:
     # Actuator health gate so `make demo` (and the frontend below) only proceed once the
     # backend is actually serving. start_period covers Spring Boot boot + JPA validate (~5s).
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      # 127.0.0.1 (not localhost) — inside the container localhost can resolve to IPv6 [::1]
+      # while the server binds IPv4, which fails the check.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -73,8 +75,10 @@ services:
         condition: service_healthy
     ports: ["3000:80"]
     # busybox wget ships in nginx:alpine — a plain 200 on / proves nginx is serving the SPA.
+    # 127.0.0.1 (not localhost): busybox wget tries only the first resolved address, and
+    # localhost can resolve to IPv6 [::1] where nginx (IPv4-only) is not listening.
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
