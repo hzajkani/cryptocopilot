@@ -17,11 +17,13 @@ This guide is the per-PC setup, since the project runs on several machines.
 
 ## 1. Install Ollama
 
+Get the install command for your OS from <https://ollama.com/download>.
+
 **macOS**
 ```bash
-brew install ollama
-brew services start ollama        # runs the server now + at login (http://localhost:11434)
-# (or, no background service:)  ollama serve
+# official installer (Homebrew's `brew install ollama` is unreliable — use this)
+curl -fsSL https://ollama.com/install.sh | sh
+# start the server:  ollama serve   (or launch the Ollama.app, which runs it at login)
 ```
 
 **Linux**
@@ -31,8 +33,11 @@ curl -fsSL https://ollama.com/install.sh | sh
 ```
 
 **Windows**
-- Download and run the installer from <https://ollama.com/download> (it starts a background service),
-  **or** use WSL2 and follow the Linux steps.
+```powershell
+irm https://ollama.com/install.ps1 | iex
+```
+- ...or download and run the installer from <https://ollama.com/download> (it starts a background
+  service), **or** use WSL2 and follow the Linux steps.
 
 Verify the server is up (all platforms):
 ```bash
