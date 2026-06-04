@@ -21,7 +21,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           recharts: ['recharts'],
-          'lightweight-charts': ['lightweight-charts'],
+          klinecharts: ['klinecharts'],
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
         },
       },
