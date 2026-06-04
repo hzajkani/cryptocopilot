@@ -19,7 +19,7 @@ isotonic calibration, SHAP), and a clean two-language boundary that is **just a 
 no RPC, no shared model files. The numbers below are **honest** (an ML macro-F1 of 0.375 is presented
 as the deliberate, data-limited result it is) — see [Honest scope](#honest-scope).
 
-## Architecture — four containers, one shared database
+## Architecture — five containers, one shared database
 
 ```
                         ┌──────────────────────────────┐
@@ -31,22 +31,26 @@ as the deliberate, data-limited result it is) — see [Honest scope](#honest-sco
                         │  backend  (Spring Boot)      │   ◄── MODULAR MONOLITH
                         │  ta4j · Spring AI · trading  │       (ONE container, many
                         │  analyst · REST API          │        internal modules)
-                        └───────────────┬──────────────┘
-                                        │ JDBC
-                                        ▼
-       ┌──────────────────────►  ┌──────────────────────────────┐
-       │  (writes predictions,   │  db  (Postgres 16 + pgvector)│  ◄── SINGLE SOURCE
-       │   raw data)             └──────────────────────────────┘       OF STATE, SHARED
-       │
-┌──────┴───────────────────────┐
-│  ml  (Python)                │   ◄── BATCH WORKER, not a web server.
-│  ingestion · XGBoost · SHAP  │       Wakes on a schedule, writes to DB, sleeps.
-└──────────────────────────────┘
+                        └──────┬──────────────────┬────┘
+                               │ JDBC             │ HTTP  /api/ml/* → ingest·train·predict
+                               ▼                  ▼
+       ┌──────────────►  ┌─────────────────┐   ┌──────────────────────────────┐
+       │ (writes preds,  │  db  (Postgres  │   │  ml-api  (Python · FastAPI)  │ ◄─ ON-DEMAND
+       │  raw data)      │  16 + pgvector) │   │  triggers the same jobs      │    TRIGGERS
+       │                 └─────────────────┘   └───────────────┬──────────────┘
+       │                          ▲                            │ (same code,
+┌──────┴───────────────────────┐  │ JDBC reads                 │  shared model dir)
+│  ml  (Python)                │  │                            ▼
+│  ingestion · XGBoost · SHAP  │  └──────────────────  writes predictions / raw data
+└──────────────────────────────┘   ◄── BATCH WORKER: wakes on a schedule, writes, sleeps.
 ```
 
 The **database is the polyglot boundary**: Python writes its tables, Java reads them — no RPC, no
 shared model files. Each table has exactly one writer. The backend is a **modular monolith**, not
-microservices, and the ML service is a **batch job**, not a server. The full rationale is one page:
+microservices. The ML pipeline runs two ways over the *same* code: the **`ml`** container is a
+scheduled **batch worker**, and the **`ml-api`** container puts a thin **FastAPI** in front of the
+same ingest/train/predict jobs so they can be launched on demand from the backend (`/api/ml/*`) and
+the **ML Pipeline** page in the UI. The full rationale is one page:
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
 ## Screenshots
@@ -113,7 +117,7 @@ then `make reindex`.
 
 ```bash
 cp -n .env.example .env && $EDITOR .env        # secrets
-docker compose up -d --build --wait db backend frontend
+docker compose up -d --build --wait db backend frontend ml-api
 
 docker compose run --rm ml python -m ml.ingest.run_all   # FETCH  → ohlcv/market_meta/news/onchain/fundamentals
 docker compose run --rm ml python -m ml.train            # TRAIN  → ml/models/v1/ (+ reports)
@@ -123,9 +127,21 @@ curl -X POST localhost:8080/api/rag/reindex              # build the pgvector in
 bash scripts/seed_demo_trades.sh                          # seed a few illustrative paper trades
 ```
 
+The same three jobs can be launched **on demand** instead of by `compose run` — from the
+**ML Pipeline** page in the UI (a button each for ingest / train / predict, with live status and
+results), or via the backend proxy. They run as background jobs; the `POST` returns a job to poll:
+
+```bash
+JOB=$(curl -fsS -X POST localhost:8080/api/ml/ingest | python -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+curl -fsS localhost:8080/api/ml/jobs/$JOB                 # poll: state → running | success | error
+curl -fsS localhost:8080/api/ml/status                    # row counts · model card · latest predictions
+# Swagger for the Python service itself: http://localhost:8000/docs
+```
+
 The `ml` container's default command is an **APScheduler** worker (daily ingest + a predict every
-4h); training stays manual. `ml/models/`, `ml/data/`, `ml/reports/` are **bind-mounted**, so a model
-trained by one `compose run` is visible to the next `predict` and inspectable on the host.
+4h); the sibling **`ml-api`** container serves the on-demand FastAPI over the *same* code. Training
+stays off the schedule. `ml/models/`, `ml/data/`, `ml/reports/` are **bind-mounted** and shared by
+both, so a model trained by either path is visible to the next `predict` and inspectable on the host.
 
 ## Honest scope
 

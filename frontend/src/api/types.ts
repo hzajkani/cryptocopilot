@@ -216,6 +216,93 @@ export type TradingMetrics = {
 
 export type PerformanceReport = { equityCurve: EquityPoint[]; metrics: TradingMetrics };
 
+// ===== ML pipeline (mirrors the Python FastAPI payloads in ml/ml/api.py) =====
+// Ingest/train/predict run as background jobs: POST returns a job, then poll
+// /api/ml/jobs/{id} until `state` is terminal.
+
+export type MlJobKind = 'ingest' | 'train' | 'predict';
+export type MlJobState = 'running' | 'success' | 'error';
+
+/** Test-set metrics from a training run (snake_case keys are the metric names). */
+export type TrainMetrics = { macro_f1: number; macro_auc: number; brier: number };
+
+/** Per-source row counts from an ingestion run (-1 = that source failed and was skipped). */
+export type IngestResult = {
+  counts: Record<string, number>;
+  total: number;
+  tables: Record<string, number>;
+};
+
+export type TrainResult = {
+  modelVersion: string | null;
+  timeframe: string | null;
+  trainedAt: string | null;
+  featureCount: number;
+  decisionWeights: number[] | null;
+  metrics: {
+    test: TrainMetrics | null;
+    perSymbolMacroF1: Record<string, number> | null;
+    baseline: Record<string, number> | null;
+    backtest: Record<string, number> | null;
+    bestParams: Record<string, number> | null;
+  };
+  splits: Record<string, { start?: string; end?: string; rows?: number; note?: string }> | null;
+};
+
+/** One row of the `predictions` table (snake_case — straight from SQL). */
+export type MlPrediction = {
+  symbol: string;
+  ts_utc: string;
+  timeframe: string;
+  pred_class: MlClass | null;
+  prob_up: number | null;
+  prob_flat: number | null;
+  prob_down: number | null;
+  model_version: string | null;
+  created_at: string | null;
+};
+
+export type PredictResult = {
+  written: { predictions: number; drivers: number };
+  predictions: MlPrediction[];
+};
+
+export type MlJob = {
+  id: string;
+  kind: MlJobKind;
+  state: MlJobState;
+  startedAt: string;
+  finishedAt: string | null;
+  durationSec: number;
+  result: IngestResult | TrainResult | PredictResult | null;
+  error: string | null;
+};
+
+export type OhlcvFreshness = { symbol: string; latest: string | null; bars: number };
+
+export type MlModelInfo = {
+  version: string;
+  exists: boolean;
+  trainedAt?: string | null;
+  timeframe?: string | null;
+  featureCount?: number;
+  test?: TrainMetrics | null;
+  splits?: Record<string, { start?: string; end?: string; rows?: number; note?: string }>;
+};
+
+export type MlStatus = {
+  timeframe: string;
+  tables: Record<string, number>;
+  ohlcv: OhlcvFreshness[];
+  model: MlModelInfo;
+  predictions: MlPrediction[];
+  activeJob: MlJob | null;
+  // "When did each stage last run" (ISO timestamps, null if never):
+  lastIngestedAt: string | null; // newest ingested datapoint
+  lastTrainedAt: string | null; // model training time
+  lastPredictedAt: string | null; // most recent prediction write
+};
+
 /** The fixed 10-coin universe, in the backend's canonical display order (util.Symbols). */
 export const UNIVERSE = [
   'BTC',

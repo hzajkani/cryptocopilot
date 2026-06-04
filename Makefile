@@ -12,8 +12,8 @@ help: ## Show this help
 demo: ## One-command demo: up + ingest + train + predict + reindex + seed (~minutes the first time)
 	@bash scripts/demo.sh
 
-up: ## Build + start db, backend, frontend (waits for healthchecks)
-	docker compose up -d --build --wait db backend frontend
+up: ## Build + start db, ml-api, backend, frontend (waits for healthchecks)
+	docker compose up -d --build --wait db ml-api backend frontend
 
 down: ## Stop all containers (keeps the pgdata volume)
 	docker compose down

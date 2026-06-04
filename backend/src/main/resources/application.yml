@@ -61,6 +61,10 @@ cryptocopilot:
     timeframe: 1h             # orders fill against the 1h OHLCV grid
   analyst:
     ml-confidence-threshold: 0.50   # τ: above this an ML UP/DOWN scores ±2 instead of ±1
+  ml:
+    # The Python ML/data service's FastAPI (ingest/train/predict triggers). localhost for local
+    # dev; the backend container overrides this to the compose service name via ML_API_URL.
+    base-url: ${ML_API_URL:http://localhost:8000}
 
 management:
   endpoints:

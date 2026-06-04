@@ -1,8 +1,9 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAsync } from '../lib/useAsync';
 import { fmtPct, fmtUsd, fmtUsdCompact, signClass } from '../lib/format';
 import { CoinAvatar, ErrorState, PageHead, Skeleton } from '../components/ui';
+import { IconPipeline } from '../components/icons';
 
 export function MarketsPage() {
   const navigate = useNavigate();
@@ -10,10 +11,15 @@ export function MarketsPage() {
 
   return (
     <>
-      <PageHead
-        title="Markets"
-        subtitle="The 10-coin universe — price and 24h change from 4h candles, latest market cap from CoinGecko."
-      />
+      <div className="row between wrap" style={{ alignItems: 'flex-start', gap: 12 }}>
+        <PageHead
+          title="Markets"
+          subtitle="The 10-coin universe — price and 24h change from 4h candles, latest market cap from CoinGecko."
+        />
+        <Link to="/ml" className="btn primary" style={{ flexShrink: 0, marginTop: 4 }}>
+          <IconPipeline width={16} height={16} /> ML Pipeline
+        </Link>
+      </div>
 
       {error ? (
         <ErrorState message={error} onRetry={reload} />

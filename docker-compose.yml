@@ -34,6 +34,32 @@ services:
     # batch worker: default command sleeps (scheduler loop); jobs are run via `docker compose run`
     command: ["python", "-m", "ml.scheduler"]
 
+  ml-api:
+    # Same image as `ml`, but serves the FastAPI trigger layer (ml/ml/api.py) so the
+    # backend (and, through it, the UI) can launch ingest/train/predict on demand.
+    # Shares the SAME bind-mounted artifacts as the scheduler, so a model trained
+    # from the UI is exactly the one `predict` loads.
+    build: ./ml
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://cc:ccpass@db:5432/cryptocopilot
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./ml/models:/app/models
+      - ./ml/data:/app/data
+      - ./ml/reports:/app/reports
+    command: ["uvicorn", "ml.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["8000:8000"]   # also exposes Swagger at http://localhost:8000/docs for dev
+    healthcheck:
+      # python:3.11-slim has no curl; urllib is always present.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   backend:
     build: ./backend
     env_file: .env
@@ -41,6 +67,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/cryptocopilot
       SPRING_DATASOURCE_USERNAME: cc
       SPRING_DATASOURCE_PASSWORD: ccpass
+      # The Python ML/data service's FastAPI (ingest/train/predict triggers).
+      ML_API_URL: http://ml-api:8000
       # Stage 4 RAG runs on a LOCAL Ollama on the host (free, no API key). The container
       # reaches it via host.docker.internal. See docs/OLLAMA_SETUP.md.
       OLLAMA_BASE_URL: http://host.docker.internal:11434
@@ -53,6 +81,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ml-api:
+        # started, not healthy — the backend tolerates the ML service being down
+        # (the /api/ml/* endpoints return a clean 502) so boot is never blocked on it.
+        condition: service_started
     ports: ["8080:8080"]
     # Actuator health gate so `make demo` (and the frontend below) only proceed once the
     # backend is actually serving. start_period covers Spring Boot boot + JPA validate (~5s).
@@ -87,5 +119,6 @@ services:
 volumes:
   pgdata:
 
-# All four containers now run: db (Stage 1), ml (Stage 1/2), backend (Stage 3-5),
-# frontend (Stage 6 — React + nginx). See PROJECT.md §7 (build roadmap).
+# Containers: db (Stage 1), ml (Stage 1/2 scheduler/batch), ml-api (Stage 1/2 on-demand
+# FastAPI triggers), backend (Stage 3-5), frontend (Stage 6 — React + nginx).
+# See PROJECT.md §7 (build roadmap).

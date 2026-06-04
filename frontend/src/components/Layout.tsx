@@ -5,6 +5,7 @@ import {
   IconChat,
   IconMarkets,
   IconPerformance,
+  IconPipeline,
   IconSignals,
   IconTrade,
 } from './icons';
@@ -16,6 +17,7 @@ const NAV = [
   { to: '/chat', label: 'Researcher', Icon: IconChat, end: false },
   { to: '/trade', label: 'Paper Trades', Icon: IconTrade, end: false },
   { to: '/performance', label: 'Performance', Icon: IconPerformance, end: false },
+  { to: '/ml', label: 'ML Pipeline', Icon: IconPipeline, end: false },
 ];
 
 export function Layout() {

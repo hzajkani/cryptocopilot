@@ -12,6 +12,8 @@ import type {
   ChatRequest,
   FillResult,
   Market,
+  MlJob,
+  MlStatus,
   Order,
   OrderRequest,
   PerformanceReport,
@@ -42,12 +44,27 @@ async function handle<T>(res: Response): Promise<T> {
     } catch {
       /* body already consumed or empty */
     }
-    throw new ApiError(detail || `${res.status} ${res.statusText}`, res.status);
+    throw new ApiError(extractMessage(detail) || `${res.status} ${res.statusText}`, res.status);
   }
   if (res.status === 204) {
     return undefined as T;
   }
   return (await res.json()) as T;
+}
+
+/**
+ * The backend's error body is structured JSON (`ApiError {error, message, status}`); surface its
+ * human-readable `message` rather than the raw JSON. Non-JSON bodies pass through unchanged.
+ */
+function extractMessage(body: string): string {
+  if (!body || body[0] !== '{') return body;
+  try {
+    const parsed = JSON.parse(body) as { message?: unknown };
+    if (typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message;
+  } catch {
+    /* not JSON — fall back to the raw text */
+  }
+  return body;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -109,6 +126,13 @@ export const api = {
   performance: () => get<PerformanceReport>('/performance'),
   resetAccount: (startingBalance = 0) =>
     post<AccountState>(`/account/reset?startingBalance=${startingBalance}`),
+
+  // --- ML pipeline (Python service, proxied by the backend) ---
+  mlStatus: () => get<MlStatus>('/ml/status'),
+  mlIngest: () => post<MlJob>('/ml/ingest'),
+  mlTrain: () => post<MlJob>('/ml/train'),
+  mlPredict: () => post<MlJob>('/ml/predict'),
+  mlJob: (id: string) => get<MlJob>(`/ml/jobs/${encodeURIComponent(id)}`),
 };
 
 export type Api = typeof api;
