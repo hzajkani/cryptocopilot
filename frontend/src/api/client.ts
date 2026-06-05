@@ -11,6 +11,7 @@ import type {
   Candle,
   ChatRequest,
   FillResult,
+  LlmProviders,
   Market,
   MlJob,
   MlStatus,
@@ -22,6 +23,7 @@ import type {
   TAVerdict,
   Trade,
 } from './types';
+import { getLlmProvider } from '../lib/llmProvider';
 
 const BASE = '/api';
 
@@ -109,13 +111,18 @@ export const api = {
   ta: (symbol: string) => get<TAVerdict>(`/ta/${encodeURIComponent(symbol)}`),
 
   // --- researcher (RAG) ---
-  chat: (req: ChatRequest) => post<AnswerWithCitations>('/chat', req),
+  // The active LLM provider (Ollama default / OpenAI) rides on every chat + analyst call so the
+  // sidebar toggle takes effect app-wide; an explicit req.provider still wins if a caller sets one.
+  chat: (req: ChatRequest) =>
+    post<AnswerWithCitations>('/chat', { ...req, provider: req.provider ?? getLlmProvider() }),
   ragStatus: () => get<Record<string, number>>('/rag/status'),
   ragReindex: () => post<Record<string, number>>('/rag/reindex'),
+  llmProviders: () => get<LlmProviders>('/llm/providers'),
 
   // --- analyst ---
-  analystAll: () => get<AnalystResponse[]>('/analyst'),
-  analyst: (symbol: string) => get<AnalystResponse>(`/analyst/${encodeURIComponent(symbol)}`),
+  analystAll: () => get<AnalystResponse[]>(`/analyst?provider=${getLlmProvider()}`),
+  analyst: (symbol: string) =>
+    get<AnalystResponse>(`/analyst/${encodeURIComponent(symbol)}?provider=${getLlmProvider()}`),
 
   // --- paper trading ---
   submitOrder: (req: OrderRequest) => post<FillResult>('/orders', req),

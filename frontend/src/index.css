@@ -177,12 +177,100 @@ button {
   flex: 0 0 17px;
 }
 
-.sidebar-foot {
+.sidebar-bottom {
   margin-top: auto;
+}
+.sidebar-foot {
   padding: 14px 16px;
   border-top: 1px solid var(--border-soft);
   font-size: 11px;
   color: var(--text-faint);
+}
+
+/* LLM provider toggle (Ollama default / OpenAI) — app-wide, persisted. */
+.llm-toggle {
+  padding: 12px 14px 4px;
+  border-top: 1px solid var(--border-soft);
+}
+.llm-toggle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+.llm-toggle-cap {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.llm-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.llm-badge.ollama {
+  color: var(--text-dim);
+  background: var(--flat-bg);
+}
+.llm-badge.openai {
+  color: #cfe0ff;
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+/* The switch: a two-option track with a sliding knob over the active side. */
+.llm-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  cursor: pointer;
+  overflow: hidden;
+}
+.llm-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.llm-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: calc(100% - 4px);
+  border-radius: 999px;
+  background: var(--flat);
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+.llm-switch.on .llm-switch-knob {
+  transform: translateX(100%);
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+}
+.llm-switch-opt {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  transition: color 0.16s ease;
+}
+.llm-switch:not(.on) .llm-switch-opt.left {
+  color: #0b0e11;
+}
+.llm-switch.on .llm-switch-opt.right {
+  color: #fff;
+}
+.llm-toggle-note {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--warn);
 }
 
 .main {
@@ -949,7 +1037,8 @@ input.input:disabled {
   .brand-name,
   .brand-sub,
   .nav-link span,
-  .sidebar-foot {
+  .sidebar-foot,
+  .llm-toggle {
     display: none;
   }
   .content {

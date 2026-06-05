@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { DisclaimerBanner } from './DisclaimerBanner';
+import { LlmToggle } from './LlmToggle';
 import {
   IconAnalyst,
   IconChat,
@@ -44,7 +45,10 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="sidebar-foot">Paper trading only. No real money, ever.</div>
+        <div className="sidebar-bottom">
+          <LlmToggle />
+          <div className="sidebar-foot">Paper trading only. No real money, ever.</div>
+        </div>
       </aside>
 
       <main className="main">

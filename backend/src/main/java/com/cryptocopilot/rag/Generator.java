@@ -58,33 +58,46 @@ public class Generator {
         this.llm = llm;
     }
 
+    /** Generate on the default provider ({@link LlmProvider#OLLAMA}). */
     public AnswerWithCitations generate(String query, RetrievalResult retrieval) {
+        return generate(query, retrieval, LlmProvider.OLLAMA);
+    }
+
+    /**
+     * Generate using {@code requested} provider. If that provider is unavailable (e.g. OpenAI with
+     * no key), we fall back to Ollama and the returned {@code provider} reports the one actually
+     * used. The provider is part of the cache key, so the same question can be cached per-provider.
+     */
+    public AnswerWithCitations generate(String query, RetrievalResult retrieval, LlmProvider requested) {
         long start = System.nanoTime();
         List<RetrievedChunk> chunks = retrieval.chunks();
+        LlmProvider provider = (requested != null && llm.supports(requested))
+                ? requested : LlmProvider.OLLAMA;
 
         if (isAdviceRequest(query)) {
             return new AnswerWithCitations(REFUSAL_ADVICE, List.of(), chunks,
-                    elapsedMs(start), retrieval.classification());
+                    elapsedMs(start), retrieval.classification(), provider.label());
         }
         if (chunks.isEmpty()) {
             return new AnswerWithCitations(REFUSAL_NO_CONTEXT, List.of(), chunks,
-                    elapsedMs(start), retrieval.classification());
+                    elapsedMs(start), retrieval.classification(), provider.label());
         }
 
-        String key = cacheKey(query, chunks);
+        String key = cacheKey(query, chunks, provider);
         AnswerWithCitations cached = cache.get(key);
         if (cached != null) {
             return new AnswerWithCitations(cached.answer(), cached.citations(),
-                    cached.retrievedChunks(), elapsedMs(start), cached.queryClassification());
+                    cached.retrievedChunks(), elapsedMs(start), cached.queryClassification(),
+                    cached.provider());
         }
 
-        String raw = llm.complete(SYSTEM_PROMPT, buildUserMessage(query, chunks)).trim();
+        String raw = llm.complete(SYSTEM_PROMPT, buildUserMessage(query, chunks), provider).trim();
         List<Citation> citations = extractCitations(raw, chunks);
         // Grounding guard: an answer with no verifiable citation is not grounded — refuse cleanly.
         String answer = citations.isEmpty() ? REFUSAL_NO_CONTEXT : raw;
 
         AnswerWithCitations result = new AnswerWithCitations(answer, citations, chunks,
-                elapsedMs(start), retrieval.classification());
+                elapsedMs(start), retrieval.classification(), provider.label());
         cache.put(key, result);
         return result;
     }
@@ -145,8 +158,9 @@ public class Generator {
         return oneLine.length() <= SNIPPET_LEN ? oneLine : oneLine.substring(0, SNIPPET_LEN) + "…";
     }
 
-    private static String cacheKey(String query, List<RetrievedChunk> chunks) {
-        StringBuilder sb = new StringBuilder(query.trim().toLowerCase(Locale.ROOT)).append('|');
+    private static String cacheKey(String query, List<RetrievedChunk> chunks, LlmProvider provider) {
+        StringBuilder sb = new StringBuilder(provider.label()).append('|')
+                .append(query.trim().toLowerCase(Locale.ROOT)).append('|');
         for (RetrievedChunk c : chunks) {
             sb.append(c.id()).append(',');
         }

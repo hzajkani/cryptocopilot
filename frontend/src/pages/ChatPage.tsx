@@ -77,6 +77,7 @@ function BotMessage({ answer }: { answer: AnswerWithCitations }) {
         </div>
       )}
       <div className="chat-meta">
+        {answer.provider === 'openai' ? 'OpenAI gpt-4o-mini' : 'Ollama'} ·{' '}
         {answer.queryClassification} · {answer.latencyMs} ms
       </div>
     </div>

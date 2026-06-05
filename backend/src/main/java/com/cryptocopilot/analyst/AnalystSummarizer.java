@@ -2,6 +2,7 @@ package com.cryptocopilot.analyst;
 
 import com.cryptocopilot.dto.TAVerdict;
 import com.cryptocopilot.rag.LlmClient;
+import com.cryptocopilot.rag.LlmProvider;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -45,11 +46,16 @@ public class AnalystSummarizer {
                         String mlClass, Double mlConfidence, TAVerdict ta, double newsScore) {
     }
 
-    /** Generate the (guarded) summary, falling back to a deterministic template on any failure. */
+    /** Summarize on the default provider ({@link LlmProvider#OLLAMA}). */
     public String summarize(Facts facts) {
+        return summarize(facts, LlmProvider.OLLAMA);
+    }
+
+    /** Generate the (guarded) summary, falling back to a deterministic template on any failure. */
+    public String summarize(Facts facts, LlmProvider provider) {
         List<Double> allowed = allowedNumbers(facts);
         try {
-            String raw = llm.complete(SYSTEM_PROMPT, userPrompt(facts));
+            String raw = llm.complete(SYSTEM_PROMPT, userPrompt(facts), provider);
             raw = raw == null ? "" : raw.trim();
             if (!raw.isBlank() && isGrounded(raw, allowed)) {
                 return raw;

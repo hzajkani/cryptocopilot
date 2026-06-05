@@ -37,8 +37,9 @@ class RagControllerTest {
                 Instant.parse("2026-05-30T00:00:00Z"), "Solana uses Proof of History…");
         AnswerWithCitations answer = new AnswerWithCitations(
                 "Solana combines Proof of History with Proof of Stake [1].",
-                List.of(cite), List.of(), 142L, "kb");
-        when(ragService.chat(eq("How does Solana achieve consensus?"), any())).thenReturn(answer);
+                List.of(cite), List.of(), 142L, "kb", "ollama");
+        when(ragService.chat(eq("How does Solana achieve consensus?"), any(), any()))
+                .thenReturn(answer);
 
         mockMvc.perform(post("/api/chat")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -31,14 +31,19 @@ public class RagService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /** Answer a grounded, cited question. A blank query is refused without touching the LLM. */
+    /** Answer on the default provider ({@link LlmProvider#OLLAMA}). */
     public AnswerWithCitations chat(String query, List<String> symbols) {
+        return chat(query, symbols, LlmProvider.OLLAMA);
+    }
+
+    /** Answer a grounded, cited question. A blank query is refused without touching the LLM. */
+    public AnswerWithCitations chat(String query, List<String> symbols, LlmProvider provider) {
         if (query == null || query.isBlank()) {
             return new AnswerWithCitations(Generator.REFUSAL_NO_CONTEXT, List.of(), List.of(), 0,
-                    QueryClass.ALL.label());
+                    QueryClass.ALL.label(), provider.label());
         }
         RetrievalResult retrieval = retriever.retrieve(query, TOP_K, symbols, null);
-        return generator.generate(query, retrieval);
+        return generator.generate(query, retrieval, provider);
     }
 
     /** Clear-and-rebuild the pgvector corpus. Returns chunk counts per source type. */

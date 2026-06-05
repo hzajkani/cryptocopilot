@@ -2,6 +2,7 @@ package com.cryptocopilot.controller;
 
 import com.cryptocopilot.rag.AnswerWithCitations;
 import com.cryptocopilot.rag.ChatRequest;
+import com.cryptocopilot.rag.LlmProvider;
 import com.cryptocopilot.rag.RagService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,10 +28,13 @@ public class RagController {
 
     @Operation(summary = "Ask the Researcher",
             description = "Strictly-grounded answer with [N] citations. Refuses out-of-corpus "
-                    + "questions and trading advice with fixed phrases; never hallucinates.")
+                    + "questions and trading advice with fixed phrases; never hallucinates. "
+                    + "Optional body field 'provider' (\"ollama\" default / \"openai\") selects the "
+                    + "answering model; the response echoes the provider actually used.")
     @PostMapping("/api/chat")
     public AnswerWithCitations chat(@RequestBody ChatRequest request) {
-        return ragService.chat(request.query(), request.symbols());
+        return ragService.chat(request.query(), request.symbols(),
+                LlmProvider.fromLabel(request.provider()));
     }
 
     @Operation(summary = "RAG index status",

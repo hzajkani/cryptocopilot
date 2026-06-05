@@ -53,7 +53,13 @@ export type Signal = {
   ta: TAVerdict;
 };
 
-export type ChatRequest = { query: string; symbols?: string[] };
+// 'ollama' (free local default) or 'openai' (gpt-4o-mini). Mirrors the backend LlmProvider.
+export type LlmProviderId = 'ollama' | 'openai';
+
+export type ChatRequest = { query: string; symbols?: string[]; provider?: LlmProviderId };
+
+/** GET /api/llm/providers — which providers can answer right now; `default` is always 'ollama'. */
+export type LlmProviders = { default: LlmProviderId; ollama: boolean; openai: boolean };
 
 export type Citation = {
   number: number;
@@ -85,6 +91,7 @@ export type AnswerWithCitations = {
   retrievedChunks: RetrievedChunk[];
   latencyMs: number;
   queryClassification: string;
+  provider?: LlmProviderId; // the model that actually answered (may differ from requested on fallback)
 };
 
 export type FundamentalHealth = 'IMPROVING' | 'STABLE' | 'DETERIORATING' | 'UNKNOWN';

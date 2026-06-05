@@ -15,9 +15,11 @@ spring:
       hibernate.jdbc.time_zone: UTC
 
   # ===== Stage 4 RAG: Spring AI =====
-  # ACTIVE provider: local Ollama for BOTH chat and embeddings — free, no API key
-  # (see docs/OLLAMA_SETUP.md). Switch back to OpenAI by setting model.chat/embedding=openai
-  # + pgvector.dimensions=1536, then POST /api/rag/reindex.
+  # DEFAULT provider: local Ollama for BOTH chat and embeddings — free, no API key
+  # (see docs/OLLAMA_SETUP.md). The CHAT/generation model is toggleable at runtime from the UI
+  # (Ollama default / OpenAI gpt-4o-mini) — LlmConfig builds an OpenAI ChatClient when OPENAI_API_KEY
+  # is set, and SpringAiLlmClient routes per request. EMBEDDINGS stay on Ollama (nomic-embed-text,
+  # 768-dim) regardless, so toggling needs NO reindex and NO pgvector dimension change.
   ai:
     model:
       chat: ollama
@@ -35,7 +37,10 @@ spring:
         options:
           model: ${OLLAMA_EMBED_MODEL:nomic-embed-text}   # 768-dim
     openai:
-      # inactive (model.* selects ollama above); kept so switching back is config-only.
+      # NOT auto-configured (model.chat selects ollama above). LlmConfig builds the OpenAI
+      # ChatClient by hand from this key (only when it starts with "sk-") + the chat.options below,
+      # so the UI toggle can route to gpt-4o-mini. The embedding block is unused — embeddings are
+      # Ollama-only (768-dim), never OpenAI, so the vector store never needs a 1536-dim reindex.
       api-key: ${OPENAI_API_KEY:not-used}
       chat:
         options:
