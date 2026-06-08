@@ -22,3 +22,7 @@ ml/reports/*
 
 # OS noise
 .DS_Store
+
+# Personal project guide + Demo Day deck (guides, presentation, screenshots, build scripts).
+# Kept local on purpose — never committed or pushed.
+#/docs/guide/
