@@ -124,7 +124,7 @@ SLIDES = [
 
 
 def build():
-    d = Doc(rtl=False)
+    d = Doc()
     d.title_page(
         "CryptoCopilot — Demo Day",
         "Speaker Script",

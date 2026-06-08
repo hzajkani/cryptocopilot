@@ -3,13 +3,11 @@ docxlib.py — a small, reusable Word (.docx) builder on top of python-docx.
 
 Why this exists
 ---------------
-The CryptoCopilot guide is produced in two languages (English LTR + Persian RTL)
-from the same set of helper functions, so styling stays identical and the Persian
-edition gets correct right-to-left handling (paragraph `w:bidi`, run `w:rtl`, a
-complex-script font, and right-to-left tables).
+The CryptoCopilot guide is produced from a single set of helper functions, so the
+styling stays identical across the whole document and the build stays simple.
 
 Everything here is deterministic and reproducible: `python3 build_guides.py`
-regenerates both .docx files from scratch.
+regenerates the .docx file from scratch.
 """
 from __future__ import annotations
 
@@ -39,7 +37,6 @@ ZEBRA   = "F4F7FB"                       # table zebra row
 RULE    = "C9D6E5"                       # table border colour
 
 LATIN_FONT   = "Calibri"
-PERSIAN_FONT = "Tahoma"   # broad Persian coverage; Word substitutes gracefully
 MONO_FONT    = "Consolas"
 
 # Friendly aliases -> screenshot files (resolved at build time)
@@ -74,19 +71,6 @@ def _set(el, tag, **attrs):
 def _shade(el_pr, fill):
     _set(el_pr, "w:shd", **{"w:val": "clear", "w:color": "auto", "w:fill": fill})
 
-def _para_rtl(p):
-    """Mark a paragraph right-to-left (w:bidi) and right-align it."""
-    pPr = p._p.get_or_add_pPr()
-    if pPr.find(qn("w:bidi")) is None:
-        bidi = OxmlElement("w:bidi"); bidi.set(qn("w:val"), "1"); pPr.append(bidi)
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-def _run_rtl(run):
-    """Mark a run as complex-script RTL so the cs font + shaping apply."""
-    rPr = run._r.get_or_add_rPr()
-    if rPr.find(qn("w:rtl")) is None:
-        rtl = OxmlElement("w:rtl"); rtl.set(qn("w:val"), "1"); rPr.append(rtl)
-
 def _run_fonts(run, latin, cs, size_pt=None):
     rPr = run._r.get_or_add_rPr()
     rFonts = rPr.find(qn("w:rFonts"))
@@ -104,15 +88,12 @@ def _run_fonts(run, latin, cs, size_pt=None):
 # Builder
 # ----------------------------------------------------------------------------
 class Doc:
-    def __init__(self, rtl: bool = False):
-        self.rtl = rtl
+    def __init__(self):
         self.latin = LATIN_FONT
-        self.cs = PERSIAN_FONT if rtl else LATIN_FONT
+        self.cs = LATIN_FONT
         self.d = Document()
         self._setup_styles()
         self._setup_page()
-        if rtl:
-            self._make_update_fields()
 
     # -- document setup -----------------------------------------------------
     def _setup_styles(self):
@@ -121,7 +102,6 @@ class Doc:
         normal.font.name = self.latin
         normal.font.size = Pt(10.5)
         normal.font.color.rgb = SLATE
-        # complex-script font on Normal so Persian inherits it
         rpr = normal.element.get_or_add_rPr()
         rFonts = rpr.find(qn("w:rFonts"))
         if rFonts is None:
@@ -139,12 +119,6 @@ class Doc:
             s.bottom_margin = Inches(0.85)
             s.left_margin = Inches(0.9)
             s.right_margin = Inches(0.9)
-            if self.rtl:
-                # flip the section so the binding/right-to-left flow is correct
-                pgr = s._sectPr
-                bidi = pgr.find(qn("w:bidi"))
-                if bidi is None:
-                    bidi = OxmlElement("w:bidi"); pgr.append(bidi)
 
     def _make_update_fields(self):
         # ask Word to refresh fields (the TOC) when the document is opened
@@ -165,8 +139,6 @@ class Doc:
         latin = MONO_FONT if mono else self.latin
         cs = MONO_FONT if mono else self.cs
         _run_fonts(run, latin, cs, size_pt=size)
-        if self.rtl and not mono:
-            _run_rtl(run)
 
     def _emit_rich(self, p, text, size, color, base_bold=False):
         """Render text with **bold** and `code` inline spans."""
@@ -203,8 +175,6 @@ class Doc:
         label = f"{num}.  {text}" if num else text
         r = p.add_run(label)
         self._style_run(r, 19, NAVY, bold=True)
-        if self.rtl:
-            _para_rtl(p)
         self._bottom_border(p, "1D4E89", 12)
         return p
 
@@ -215,8 +185,6 @@ class Doc:
         p.paragraph_format.keep_with_next = True
         p.style = self.d.styles["Heading 2"]
         r = p.add_run(text); self._style_run(r, 14.5, BLUE, bold=True)
-        if self.rtl:
-            _para_rtl(p)
         return p
 
     def h3(self, text):
@@ -226,15 +194,11 @@ class Doc:
         p.paragraph_format.keep_with_next = True
         p.style = self.d.styles["Heading 3"]
         r = p.add_run(text); self._style_run(r, 12, TEAL, bold=True)
-        if self.rtl:
-            _para_rtl(p)
         return p
 
     def p(self, text, size=10.5, color=None, align=None):
         para = self.d.add_paragraph()
         self._emit_rich(para, text, size, color or SLATE)
-        if self.rtl:
-            _para_rtl(para)
         if align is not None:
             para.alignment = align
         return para
@@ -243,17 +207,12 @@ class Doc:
         para = self.d.add_paragraph(style="List Bullet" if level == 0 else "List Bullet 2")
         para.paragraph_format.space_after = Pt(3)
         self._emit_rich(para, text, size, SLATE)
-        if self.rtl:
-            _para_rtl(para)
-            para.paragraph_format.left_indent = None
         return para
 
     def numbered(self, text, size=10.5):
         para = self.d.add_paragraph(style="List Number")
         para.paragraph_format.space_after = Pt(3)
         self._emit_rich(para, text, size, SLATE)
-        if self.rtl:
-            _para_rtl(para)
         return para
 
     def callout(self, text, fill=LIGHTBG, accent="1D4E89", size=10):
@@ -270,14 +229,12 @@ class Doc:
         for side in ("top", "left", "bottom", "right"):
             b = OxmlElement(f"w:{side}")
             b.set(qn("w:val"), "single")
-            b.set(qn("w:sz"), "18" if side == ("right" if self.rtl else "left") else "4")
+            b.set(qn("w:sz"), "18" if side == "left" else "4")
             b.set(qn("w:space"), "6")
-            b.set(qn("w:color"), accent if side == ("right" if self.rtl else "left") else RULE)
+            b.set(qn("w:color"), accent if side == "left" else RULE)
             pbdr.append(b)
         pPr.append(pbdr)
         self._emit_rich(p, text, size, SLATE)
-        if self.rtl:
-            _para_rtl(p)
         return p
 
     def note(self, text, size=9.5, color=None):
@@ -287,12 +244,10 @@ class Doc:
         r = p.add_run(text); r.italic = True
         r.font.size = Pt(size); r.font.color.rgb = color or GREY
         _run_fonts(r, self.latin, self.cs, size_pt=size)
-        if self.rtl:
-            _para_rtl(p); _run_rtl(r)
         return p
 
     def code(self, text, size=8.8):
-        """Monospace, shaded code block. Always LTR even in an RTL document."""
+        """Monospace, shaded code block."""
         lines = text.strip("\n").split("\n")
         p = self.d.add_paragraph()
         p.paragraph_format.space_before = Pt(4)
@@ -323,8 +278,6 @@ class Doc:
         t.alignment = WD_TABLE_ALIGNMENT.CENTER
         t.autofit = True
         self._table_borders(t)
-        if self.rtl:
-            self._table_rtl(t)
         # header
         hdr = t.rows[0].cells
         for j, htext in enumerate(headers):
@@ -337,8 +290,6 @@ class Doc:
             r.font.bold = True; r.font.size = Pt(font + 0.3)
             r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
             _run_fonts(r, self.latin, self.cs, size_pt=font + 0.3)
-            if self.rtl:
-                _para_rtl(para); _run_rtl(r)
         # body
         for i, row in enumerate(rows):
             cells = t.add_row().cells
@@ -350,8 +301,6 @@ class Doc:
                 para.paragraph_format.space_after = Pt(2)
                 para.paragraph_format.space_before = Pt(2)
                 self._emit_rich(para, str(val), font, SLATE)
-                if self.rtl:
-                    _para_rtl(para)
         if widths:
             # fixed layout so Word honours the column widths exactly (no overflow)
             t.autofit = False
@@ -391,8 +340,6 @@ class Doc:
             r = cap.add_run(caption)
             r.italic = True; r.font.size = Pt(8.8); r.font.color.rgb = GREY
             _run_fonts(r, self.latin, self.cs, size_pt=8.8)
-            if self.rtl:
-                _run_rtl(r)
         return p
 
     def toc(self, title):
@@ -427,10 +374,6 @@ class Doc:
             borders.append(e)
         tblPr.append(borders)
 
-    def _table_rtl(self, t):
-        tblPr = t._tbl.tblPr
-        bidi = OxmlElement("w:bidiVisual"); tblPr.append(bidi)
-
     def _bottom_border(self, p, color, sz):
         pPr = p._p.get_or_add_pPr()
         pbdr = pPr.find(qn("w:pBdr"))
@@ -447,22 +390,18 @@ class Doc:
         p = self.d.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = p.add_run(title); r.bold = True; r.font.size = Pt(34); r.font.color.rgb = NAVY
         _run_fonts(r, self.latin, self.cs, 34)
-        if self.rtl: _run_rtl(r)
         p2 = self.d.add_paragraph(); p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = p2.add_run(subtitle); r.font.size = Pt(15); r.font.color.rgb = TEAL; r.bold = True
         _run_fonts(r, self.latin, self.cs, 15)
-        if self.rtl: _run_rtl(r)
         self.spacer(6)
         p3 = self.d.add_paragraph(); p3.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = p3.add_run(tagline); r.italic = True; r.font.size = Pt(11.5); r.font.color.rgb = GREY
         _run_fonts(r, self.latin, self.cs, 11.5)
-        if self.rtl: _run_rtl(r)
         self.spacer(30)
         for line in meta_lines:
             pp = self.d.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.CENTER
             r = pp.add_run(line); r.font.size = Pt(10.5); r.font.color.rgb = SLATE
             _run_fonts(r, self.latin, self.cs, 10.5)
-            if self.rtl: _run_rtl(r)
         self.page_break()
 
     def save(self, path):
