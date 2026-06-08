@@ -9,6 +9,7 @@ import { ChatPage } from './pages/ChatPage';
 import { TradePage } from './pages/TradePage';
 import { PerformancePage } from './pages/PerformancePage';
 import { MlPipelinePage } from './pages/MlPipelinePage';
+import { SlidesPage } from './pages/SlidesPage';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/trade" element={<TradePage />} />
         <Route path="/performance" element={<PerformancePage />} />
         <Route path="/ml" element={<MlPipelinePage />} />
+        <Route path="/slides" element={<SlidesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

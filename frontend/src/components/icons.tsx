@@ -71,6 +71,14 @@ export const IconPipeline = (p: P) => (
   </svg>
 );
 
+export const IconSlides = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="1.5" />
+    <path d="M12 16v3" />
+    <path d="M9 20h6" />
+  </svg>
+);
+
 export const IconBack = (p: P) => (
   <svg {...base} {...p}>
     <path d="M19 12H5" />
