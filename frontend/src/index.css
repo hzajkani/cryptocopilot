@@ -1030,6 +1030,368 @@ input.input:disabled {
   color: var(--text-dim);
 }
 
+/* ============================================================================
+   DEMO VISUAL ENHANCEMENTS (additive — source badges, pipeline + architecture
+   diagrams, prominent ML bars). Frontend only; no behaviour change.
+   ============================================================================ */
+
+/* --------------------------------------------------------- source badges --- */
+/* Surface WHERE each datum comes from (PROJECT.md §6). The pill background is the
+   source API's brand colour; text is white except on the two light brand colours
+   (Binance yellow, CoinGecko green) where dark text is far more legible. */
+.src-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #fff;
+  white-space: nowrap;
+  line-height: 1.45;
+}
+.src-badge.binance { background: #f3ba2f; color: #1a1a1a; }
+.src-badge.coingecko { background: #8dc647; color: #11260a; }
+.src-badge.blockchain { background: #1a73e8; }
+.src-badge.etherscan { background: #21325b; }
+.src-badge.news { background: #f97316; }
+.src-badge.openai { background: #10b981; color: #04261b; }
+.src-badge.ta4j { background: #6366f1; }
+.src-badge.pgvector { background: #7c3aed; }
+.src-badge.kb { background: #475569; }
+.src-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+/* ---------------------------------------------------- collapsible panel --- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.panel-head:hover {
+  background: var(--bg-elev);
+}
+.panel-head h3 {
+  font-size: 14px;
+}
+.panel-head .chev {
+  margin-left: auto;
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+  font-size: 12px;
+}
+.panel-head .chev.open {
+  transform: rotate(90deg);
+}
+.panel-body {
+  padding: 6px 16px 18px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ----------------------------------------------------- pipeline diagram --- */
+.pipeline {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 8px 0 4px;
+}
+.pipe-stage {
+  flex: 1 1 150px;
+  min-width: 138px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pipe-stage.terminal {
+  border-color: rgba(76, 141, 255, 0.55);
+  background: var(--accent-bg);
+}
+.pipe-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+}
+.pipe-sub {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  line-height: 1.45;
+}
+.pipe-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex: 0 0 24px;
+  font-size: 17px;
+  font-weight: 700;
+}
+@media (max-width: 720px) {
+  .pipe-arrow {
+    transform: rotate(90deg);
+    flex-basis: 100%;
+    height: 20px;
+  }
+  .pipe-stage {
+    flex-basis: 100%;
+  }
+}
+
+/* ----------------------------------------------- metric cards (big nums) --- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.metric-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 13px 15px;
+}
+.metric-card .m-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.metric-card .m-value {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  margin: 5px 0 3px;
+  font-family: var(--mono);
+}
+.metric-card .m-note {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 9px;
+  display: inline-block;
+}
+.status-dot.ok {
+  background: var(--up);
+  box-shadow: 0 0 0 3px var(--up-bg);
+}
+.status-dot.warn {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-bg);
+}
+.status-dot.bad {
+  background: var(--down);
+  box-shadow: 0 0 0 3px var(--down-bg);
+}
+.status-dot.pending {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.shap-chart {
+  margin-top: 8px;
+}
+
+/* ------------------------------------------------- architecture diagram --- */
+.arch-diagram {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  padding: 8px 0 2px;
+}
+.arch-box {
+  flex: 1 1 150px;
+  min-width: 128px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+}
+.arch-box.dashed {
+  border-style: dashed;
+}
+.arch-box .ab-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.arch-box .ab-tech {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  margin-top: 3px;
+}
+.arch-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+.arch-ml-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+.arch-ml-row .arch-box {
+  flex: 0 0 auto;
+  max-width: 280px;
+}
+.arch-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.arch-stat {
+  flex: 1 1 170px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 13px;
+}
+.arch-stat .as-value {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.arch-stat .as-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+@media (max-width: 720px) {
+  .arch-arrow {
+    transform: rotate(90deg);
+    flex-basis: 100%;
+    height: 18px;
+  }
+  .arch-box {
+    flex-basis: 100%;
+  }
+}
+
+/* ---------------------------------------------- prominent probability bar --- */
+.probbar-lg {
+  display: flex;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+.probbar-lg > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 0.2s ease;
+}
+.probbar-lg .seg-up {
+  background: var(--up);
+  color: #04140d;
+}
+.probbar-lg .seg-flat {
+  background: var(--flat);
+  color: #14181d;
+}
+.probbar-lg .seg-down {
+  background: var(--down);
+  color: #2b0608;
+}
+
+/* ----------------------------------------------------------- shap chips --- */
+.shap-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shap-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12.5px;
+}
+.shap-chip.pos {
+  border-color: rgba(22, 199, 132, 0.4);
+  background: var(--up-bg);
+}
+.shap-chip.neg {
+  border-color: rgba(234, 57, 67, 0.4);
+  background: var(--down-bg);
+}
+.shap-chip .sc-rank {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+.shap-chip .sc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shap-chip .sc-arrow {
+  font-weight: 800;
+}
+.shap-chip .sc-val {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.shap-chip.pos .sc-arrow,
+.shap-chip.pos .sc-val {
+  color: var(--up);
+}
+.shap-chip.neg .sc-arrow,
+.shap-chip.neg .sc-val {
+  color: var(--down);
+}
+
+/* zero-score nub for the centered score bar */
+.scorebar-fill.zero {
+  background: var(--flat);
+  left: calc(50% - 3px);
+  width: 6px;
+}
+
 @media (max-width: 760px) {
   .sidebar {
     --sidebar-w: 64px;

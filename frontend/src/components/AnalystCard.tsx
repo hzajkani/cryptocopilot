@@ -9,6 +9,7 @@ import {
   SentimentBadge,
 } from './badges';
 import { Gauge, ScoreBar } from './bars';
+import { SourceBadge, type SourceKey } from './SourceBadge';
 import { Card } from './ui';
 
 const INPUT_LABELS: Record<string, string> = {
@@ -17,6 +18,17 @@ const INPUT_LABELS: Record<string, string> = {
   fundamental: 'Fundamental',
   news: 'News',
 };
+
+/** The data origin behind each of the Analyst's four inputs (PROJECT.md §3). */
+function inputSource(name: string, healthSource: string, symbol: string): SourceKey {
+  if (name === 'ta') return 'ta4j';
+  if (name === 'news') return 'news';
+  if (name === 'fundamental') {
+    if (healthSource === 'onchain') return symbol.toUpperCase() === 'ETH' ? 'etherscan' : 'blockchain';
+    return 'coingecko';
+  }
+  return 'binance'; // ml — XGBoost over Binance OHLCV features
+}
 
 /**
  * One coin's fused Analyst opinion. Used on the Analyst grid (clickable, compact)
@@ -69,8 +81,11 @@ export function AnalystCard({
         {inputs.scoreBreakdown.map((s) => (
           <div key={s.name}>
             <div className="row between" style={{ marginBottom: 4 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-                {INPUT_LABELS[s.name] ?? s.name}
+              <span className="row gap" style={{ alignItems: 'center' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                  {INPUT_LABELS[s.name] ?? s.name}
+                </span>
+                <SourceBadge source={inputSource(s.name, healthSource, opinion.symbol)} />
               </span>
               <span
                 className={`mono ${s.score > 0 ? 'up' : s.score < 0 ? 'down' : 'flat'}`}

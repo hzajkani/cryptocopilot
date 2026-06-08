@@ -43,6 +43,44 @@ export function ProbBar({
   );
 }
 
+/**
+ * A taller, prominent UP/FLAT/DOWN probability bar — the core ML output. Each
+ * segment carries its percentage inline when wide enough to read. Same inputs
+ * as ProbBar (calibrated class probabilities, any may be null).
+ */
+export function ProbBarLarge({
+  probUp,
+  probDown,
+  probFlat,
+}: {
+  probUp: number | null;
+  probDown: number | null;
+  probFlat: number | null;
+}) {
+  const up = probUp ?? 0;
+  const flat = probFlat ?? 0;
+  const down = probDown ?? 0;
+  const total = up + flat + down;
+  if (total <= 0) {
+    return <div className="probbar-lg" aria-label="probabilities unavailable" />;
+  }
+  const seg = (x: number, cls: string, label: string) => {
+    const pct = (x / total) * 100;
+    return (
+      <span className={cls} style={{ width: `${pct}%` }}>
+        {pct >= 12 ? `${label} ${Math.round(pct)}%` : pct >= 6 ? `${Math.round(pct)}%` : ''}
+      </span>
+    );
+  };
+  return (
+    <div className="probbar-lg" role="img" aria-label="UP/FLAT/DOWN probabilities">
+      {seg(up, 'seg-up', 'UP')}
+      {seg(flat, 'seg-flat', 'FLAT')}
+      {seg(down, 'seg-down', 'DOWN')}
+    </div>
+  );
+}
+
 /** A 0..1 agreement gauge with the numeric value alongside. */
 export function Gauge({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(1, value));
@@ -66,7 +104,9 @@ export function ScoreBar({ score, max = 2 }: { score: number; max?: number }) {
   return (
     <div className="scorebar-track" role="img" aria-label={`score ${score}`}>
       <div className="scorebar-mid" />
-      {frac >= 0 ? (
+      {score === 0 ? (
+        <div className="scorebar-fill zero" />
+      ) : frac > 0 ? (
         <div className="scorebar-fill pos" style={{ width: widthPct }} />
       ) : (
         <div className="scorebar-fill neg" style={{ width: widthPct }} />

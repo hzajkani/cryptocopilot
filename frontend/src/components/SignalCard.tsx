@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import type { Signal } from '../api/types';
-import { fmtNum, fmtPctFromFraction, signClass } from '../lib/format';
+import { fmtNum, fmtPctFromFraction } from '../lib/format';
 import { ConfidenceBadge, MlClassBadge, TaDirectionBadge } from './badges';
-import { ProbBar } from './bars';
+import { SourceBadge } from './SourceBadge';
+import { ProbBarLarge } from './bars';
 import { Card } from './ui';
 
 function signed(n: number | null, decimals = 3): string {
@@ -27,7 +28,11 @@ export function SignalCard({ signal, linkSymbol = true }: { signal: Signal; link
         </div>
       </div>
 
-      <ProbBar probUp={signal.probUp} probDown={signal.probDown} probFlat={signal.probFlat} />
+      <div className="row between" style={{ marginBottom: 6 }}>
+        <span className="section-title mb-0">ML forecast · 24h</span>
+        <SourceBadge source="binance" />
+      </div>
+      <ProbBarLarge probUp={signal.probUp} probDown={signal.probDown} probFlat={signal.probFlat} />
 
       <div className="faint" style={{ fontSize: 11, marginTop: 8 }}>
         model {signal.modelVersion || 'n/a'}
@@ -41,21 +46,24 @@ export function SignalCard({ signal, linkSymbol = true }: { signal: Signal; link
           No driver attribution available.
         </div>
       ) : (
-        <div>
-          {signal.drivers.map((d) => (
-            <div className="listrow" key={d.rank}>
-              <span className="dim mono" style={{ fontSize: 11 }}>
-                #{d.rank}
-              </span>
-              <span style={{ flex: 1 }}>{d.featureName}</span>
-              <span className={`mono ${signClass(d.shapValue)}`}>{signed(d.shapValue)}</span>
-            </div>
-          ))}
+        <div className="shap-chips">
+          {signal.drivers.map((d) => {
+            const pos = (d.shapValue ?? 0) >= 0;
+            return (
+              <div className={`shap-chip ${pos ? 'pos' : 'neg'}`} key={d.rank}>
+                <span className="sc-rank">#{d.rank}</span>
+                <span className="sc-name">{d.featureName}</span>
+                <span className="sc-arrow">{pos ? '↑' : '↓'}</span>
+                <span className="sc-val">{signed(d.shapValue)}</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="section-title" style={{ marginTop: 14 }}>
-        Technical analysis (ta4j)
+      <div className="row between" style={{ marginTop: 14, marginBottom: 8 }}>
+        <span className="section-title mb-0">Technical analysis</span>
+        <SourceBadge source="ta4j" />
       </div>
       <div className="row gap wrap" style={{ marginBottom: 8 }}>
         <TaDirectionBadge value={ta?.direction} />

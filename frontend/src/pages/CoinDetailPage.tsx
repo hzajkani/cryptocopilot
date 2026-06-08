@@ -5,6 +5,7 @@ import { useAsync } from '../lib/useAsync';
 import { CandleChart } from '../components/CandleChart';
 import { SignalCard } from '../components/SignalCard';
 import { AnalystCard } from '../components/AnalystCard';
+import { SourceBadge } from '../components/SourceBadge';
 import { IconBack } from '../components/icons';
 import { EmptyState, ErrorState, PageHead, Skeleton } from '../components/ui';
 
@@ -33,7 +34,10 @@ export function CoinDetailPage() {
 
       <div className="chart-box" style={{ marginBottom: 18 }}>
         <div className="row between" style={{ marginBottom: 12 }}>
-          <h3 style={{ fontSize: 15 }}>Price ({tf})</h3>
+          <div className="row gap">
+            <h3 style={{ fontSize: 15 }}>Price ({tf})</h3>
+            <SourceBadge source="binance" />
+          </div>
           <div className="seg">
             {TIMEFRAMES.map((t) => (
               <button key={t} className={t === tf ? 'active' : ''} onClick={() => setTf(t)}>

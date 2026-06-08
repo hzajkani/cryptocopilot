@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { errMessage } from '../lib/useAsync';
 import { useToast } from '../components/Toast';
 import { PageHead } from '../components/ui';
+import { CitationSourceBadge, SourceBadge } from '../components/SourceBadge';
 import { IconExternal } from '../components/icons';
 import { UNIVERSE, type AnswerWithCitations, type Citation } from '../api/types';
 
@@ -61,6 +62,7 @@ function BotMessage({ answer }: { answer: AnswerWithCitations }) {
             <div className="citation" key={c.number}>
               <span className="cnum">[{c.number}]</span>
               <span>
+                <CitationSourceBadge citation={c} />{' '}
                 <strong>{c.source ?? c.sourceType}</strong>
                 {c.symbol ? <span className="dim"> · {c.symbol}</span> : null} — {c.snippet}
                 {c.url && (
@@ -138,6 +140,14 @@ export function ChatPage() {
         title="Researcher"
         subtitle="Grounded, cited chat over news, on-chain, fundamentals and the knowledge base. It refuses anything the sources don’t cover — and never gives trading advice."
       />
+
+      <div className="src-strip" style={{ marginBottom: 12 }}>
+        <span className="section-title mb-0" style={{ marginRight: 2 }}>
+          Stack
+        </span>
+        <SourceBadge source="openai" />
+        <SourceBadge source="pgvector" />
+      </div>
 
       <div className="row gap wrap" style={{ marginBottom: 12 }}>
         <span className="section-title mb-0">Filter</span>

@@ -1,4 +1,47 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+
+/**
+ * A collapsible panel with a clickable header. `children` is only mounted while
+ * open, so a closed panel runs no data fetches inside it (used for the Markets
+ * architecture panel, which is closed by default).
+ */
+export function Collapsible({
+  title,
+  subtitle,
+  defaultOpen = false,
+  children,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="panel">
+      <div
+        className="panel-head"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
+      >
+        <div>
+          <h3>{title}</h3>
+          {subtitle && <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>{subtitle}</div>}
+        </div>
+        <span className={`chev ${open ? 'open' : ''}`}>▶</span>
+      </div>
+      {open && <div className="panel-body">{children}</div>}
+    </div>
+  );
+}
 
 export function Card({
   children,

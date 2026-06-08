@@ -2,7 +2,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAsync } from '../lib/useAsync';
 import { fmtPct, fmtUsd, fmtUsdCompact, signClass } from '../lib/format';
-import { CoinAvatar, ErrorState, PageHead, Skeleton } from '../components/ui';
+import { Collapsible, CoinAvatar, ErrorState, PageHead, Skeleton } from '../components/ui';
+import { ArchitecturePanel } from '../components/ArchitecturePanel';
+import { SourceBadge } from '../components/SourceBadge';
 import { IconPipeline } from '../components/icons';
 
 export function MarketsPage() {
@@ -21,6 +23,13 @@ export function MarketsPage() {
         </Link>
       </div>
 
+      <Collapsible
+        title="How it works — system architecture"
+        subtitle="Four containers, one shared Postgres. Click to see the live data flow and index stats."
+      >
+        <ArchitecturePanel />
+      </Collapsible>
+
       {error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : (
@@ -29,9 +38,17 @@ export function MarketsPage() {
             <thead>
               <tr>
                 <th>Coin</th>
-                <th className="num">Price</th>
+                <th className="num">
+                  <div className="row gap" style={{ justifyContent: 'flex-end' }}>
+                    Price <SourceBadge source="binance" />
+                  </div>
+                </th>
                 <th className="num">24h</th>
-                <th className="num">Market cap</th>
+                <th className="num">
+                  <div className="row gap" style={{ justifyContent: 'flex-end' }}>
+                    Market cap <SourceBadge source="coingecko" />
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
