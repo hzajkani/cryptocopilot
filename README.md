@@ -151,7 +151,7 @@ presented as the deliberate, documented outcomes they are (PROJECT.md §9):
 | Layer | Result | Note |
 |---|---|---|
 | **ML** 3-class direction | macro **F1 0.375** · **AUC 0.578** · **Brier 0.606** | F1 is below the 0.40 stretch gate — a **data-limited** ceiling (~2y of OHLCV), investigated (not leakage, not the decision rule). AUC + Brier pass. |
-| **RAG** retrieval | **recall@8 = 0.90** · 100% citation rate | strict grounding; refuses out-of-corpus questions + trading advice with fixed phrases. ≈ €0 (local Ollama). |
+| **RAG** retrieval | **recall@8 = 0.90** · 100% citation rate | strict grounding; gives cited, signal-based views and refuses out-of-corpus questions with a fixed phrase. ≈ €0 (local Ollama). |
 | **Paper-trading** backtest | default **0 trades**; TA proxy **Sharpe −1.20** | the default needs a historical ML series that doesn't exist (single-snapshot ML); the TA proxy is an honest fee-and-regime-driven ≤0. |
 
 The intelligence layer is documented in three interview-ready cards:

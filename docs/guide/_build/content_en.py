@@ -390,8 +390,9 @@ def build_en(d):
                "with markers like [1], [2].")
     d.p("The result is an answer that is **grounded in real sources and cited**, instead of confident "
         "fiction. CryptoCopilot’s Researcher is strict about this: if the sources do not contain the "
-        "answer, it **refuses** with a fixed phrase rather than guessing, and it **always refuses to give "
-        "trading advice**. On a 20-question evaluation it reached **recall@8 = 0.90** (for 90% of "
+        "answer, it **refuses** with a fixed phrase rather than guessing. When you ask for a view it "
+        "gives an **actionable, cited signal** — and flags it as **educational, not financial advice**. "
+        "On a 20-question evaluation it reached **recall@8 = 0.90** (for 90% of "
         "questions, a correct chunk was in the top 8 retrieved) with a **100% citation rate**.")
 
     d.h2("Why pgvector?")
@@ -595,7 +596,7 @@ def build_en(d):
     d.table(
         ["Layer", "Result", "Honest reading"],
         [["ML direction", "macro F1 0.375 · AUC 0.578 · Brier 0.606", "A small but real edge; AUC + Brier pass; F1 is a data-limited ceiling (~2y history)."],
-         ["RAG retrieval", "recall@8 0.90 · 100% citations", "Strong grounded retrieval; refuses out-of-corpus questions and trading advice. ≈ €0 (local)."],
+         ["RAG retrieval", "recall@8 0.90 · 100% citations", "Strong grounded retrieval; gives cited signal-based views, refuses out-of-corpus questions. ≈ €0 (local)."],
          ["Paper-trading backtest", "default 0 trades · TA proxy Sharpe −1.20", "The engine is correct and tested; the strategy is honestly unprofitable in this regime."]],
         widths=[1.4, 2.2, 2.7], font=8.5,
     )

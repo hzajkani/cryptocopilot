@@ -77,7 +77,8 @@ SLIDES = [
         "Normally, AI chatbots **make things up**. I didn’t want that. So I use a method called **RAG**. "
         "In simple words: before the AI answers, it **searches my real data** — news, on-chain data, and "
         "a knowledge base. Then it answers using **only those sources**, and it shows the **citations**.",
-        "If the answer isn’t in the sources, it just says so. And it **never gives trading advice**. The "
+        "If the answer isn’t in the sources, it just says so. And when it does give a view, it’s "
+        "**grounded in those sources and flagged as educational, not financial advice**. The "
         "nice thing: by default it runs **for free, on my own computer**. But with one click, I can "
         "switch to a stronger OpenAI model.",
     ]),

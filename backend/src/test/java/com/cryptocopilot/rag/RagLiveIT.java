@@ -38,8 +38,8 @@ import org.yaml.snakeyaml.Yaml;
  * <pre>RAG_LIVE=1 mvn -Dtest=RagLiveIT test</pre>
  *
  * <p>It (1) reindexes the corpus, (2) checks the DoD behaviours — mechanism question cites a KB
- * chunk, out-of-corpus and trading-advice are refused with the exact phrases, a zero-news coin
- * refuses cleanly — and (3) runs {@code evals/retrieval_eval.yaml}, writing
+ * chunk, out-of-corpus is refused with the exact phrase, a trading-advice question gets a grounded
+ * cited view, a zero-news coin refuses cleanly — and (3) runs {@code evals/retrieval_eval.yaml}, writing
  * {@code reports/retrieval_eval.md} and asserting the recall targets.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -110,9 +110,12 @@ class RagLiveIT {
 
     @Test
     @Order(5)
-    void tradingAdviceIsRefusedExactly() {
+    void tradingAdviceGetsGroundedCitedView() {
         AnswerWithCitations a = ragService.chat("Should I buy ETH now?", null);
-        assertThat(a.answer()).isEqualTo(Generator.REFUSAL_ADVICE);
+        log.info("advice answer: {}", a.answer());
+        assertThat(a.answer()).isNotEqualTo(Generator.REFUSAL_NO_CONTEXT);
+        assertThat(a.answer()).contains("[");
+        assertThat(a.citations()).isNotEmpty();
     }
 
     @Test

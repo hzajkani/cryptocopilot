@@ -115,8 +115,8 @@ builds on is kept beneath it.
 - Backend boots clean on **Spring Boot 3.4.13** (bumped from 3.3.5 for Spring AI); `vector_store`
   (768-dim, HNSW cosine) auto-created and owned by Spring AI; `ddl-auto: validate` still passes.
 - **Live DoD met:** reindex → **news 124 · onchain 53 · fundamental 10 · kb 70 (257 chunks)**;
-  mechanism chat answers with `[N]` citations from KB; out-of-corpus + trading-advice refused with
-  the exact phrases; a zero-news coin refuses cleanly. **Retrieval eval recall@8 = 0.90** (news 0.88,
+  mechanism chat answers with `[N]` citations from KB; out-of-corpus refused with the exact phrase;
+  a trading-advice question returns a grounded, cited view; a zero-news coin refuses cleanly. **Retrieval eval recall@8 = 0.90** (news 0.88,
   mechanism 0.88, fundamental 1.00; classifier accuracy 1.00) — `reports/retrieval_eval.md`.
 - **Tests: 39 offline pass (`mvn test`); live `RagLiveIT` 7/7 pass (`RAG_LIVE=1 mvn -Dtest=RagLiveIT test`).**
 - `frontend` (Stage 6) is still a placeholder. Stage 5 ✅. Next: **Stage 6** (React frontend).
@@ -528,10 +528,10 @@ Verified: backend boots in ~5s, Hibernate `validate` clean, `vector_store` prese
   by similarity alone); returns numbered chunks `[1..k]`, k=8.
 - **Generator** — `ChatClient` (Ollama `llama3.2:3b`, temp 0) behind a small `LlmClient` seam
   (`SpringAiLlmClient`, provider-agnostic, unit-testable). System prompt verbatim from the Stage 4
-  brief. **Deterministic guards** so the exact refusal
-  phrases never depend on the LLM: trading-advice → refuse before any call; empty retrieval →
-  refuse before any call; **answer with no verifiable `[N]` citation → treated as ungrounded and
-  replaced with the no-context refusal**. In-memory cache keyed by `(query, chunkIds)`.
+  brief, extended to give grounded, signal-based views. **Deterministic guards** so the exact
+  refusal phrase never depends on the LLM: empty retrieval → refuse before any call; **answer with
+  no verifiable `[N]` citation → treated as ungrounded and replaced with the no-context refusal**.
+  In-memory cache keyed by `(query, chunkIds)`.
 - **REST:** `POST /api/chat {query, symbols?}` → `AnswerWithCitations(answer, citations,
   retrievedChunks, latencyMs, queryClassification)`; `GET /api/rag/status`; `POST /api/rag/reindex`.
   Documented in Swagger (tag "Researcher (RAG)").
@@ -574,14 +574,14 @@ window) and will rise as the `ml` scheduler ingests more news.
 
 **Tests — 39 offline pass (`mvn test`); 7 live pass (`RAG_LIVE=1 mvn -Dtest=RagLiveIT test`):**
 - `rag.QueryClassifierTest` (22) — all 5 classes incl. the tricky precedence cases.
-- `rag.GeneratorTest` (6) — advice refusal & empty-retrieval refusal without any LLM call;
-  citation extraction; the no-citation → refusal guard; out-of-range `[N]` ignored; response cache.
+- `rag.GeneratorTest` (6) — grounded advice answer from context; empty-retrieval refusal without any
+  LLM call; citation extraction; the no-citation → refusal guard; out-of-range `[N]` ignored; response cache.
 - `controller.RagControllerTest` (3, `@WebMvcTest`, mocked `RagService`) — `/api/chat`,
   `/api/rag/status`, `/api/rag/reindex` shapes.
 - Existing 8 still green; `SignalsControllerTest` migrated `@MockBean` → `@MockitoBean` (Boot 3.4).
 - `rag.RagLiveIT` (7, `@SpringBootTest`, gated `@EnabledIfEnvironmentVariable RAG_LIVE`) — reindex
-  counts, mechanism retrieves a SOL KB chunk, **cited** mechanism chat, out-of-corpus and advice
-  exact refusals, zero-news (LINK) clean refusal, and the recall eval. Named `*IT`, so it is **not**
+  counts, mechanism retrieves a SOL KB chunk, **cited** mechanism chat, the out-of-corpus exact
+  refusal, a grounded cited view for advice, zero-news (LINK) clean refusal, and the recall eval. Named `*IT`, so it is **not**
   part of the default `mvn test` (which stays Ollama-free at 39); run it on demand with Ollama up.
 
 ### ✅ Live run (free local Ollama) — DoD verified
@@ -598,12 +598,12 @@ curl -s -X POST localhost:8080/api/chat -H 'Content-Type: application/json' \
 curl -s -X POST localhost:8080/api/chat -H 'Content-Type: application/json' \
   -d '{"query":"What will BTC be worth in 2030?"}'      # "The available sources do not answer this question."
 curl -s -X POST localhost:8080/api/chat -H 'Content-Type: application/json' \
-  -d '{"query":"Should I buy ETH now?"}'                # "I can summarise what sources are saying, but I cannot give trading advice."
+  -d '{"query":"Should I buy ETH now?"}'                # grounded, cited signal-based view + "not financial advice" disclaimer
 cd backend && RAG_LIVE=1 mvn -Dtest=RagLiveIT test      # 7/7 + writes reports/retrieval_eval.md
 ```
 
 Observed: reindex 257 chunks in ~4s; mechanism chat cites a KB chunk (latency ~7s on `llama3.2:3b`);
-both refusals exact; LINK (no news) refuses cleanly; recall@8 0.90. **OpenAI cost: €0 (not used).**
+out-of-corpus refusal exact, advice returns a cited view; LINK (no news) refuses cleanly; recall@8 0.90. **OpenAI cost: €0 (not used).**
 
 ### Definition of done — checklist
 
@@ -613,7 +613,7 @@ both refusals exact; LINK (no news) refuses cleanly; recall@8 0.90. **OpenAI cos
 - [x] `POST /api/rag/reindex` populates pgvector; `GET /api/rag/status` shows non-zero counts per
       source type (news 124 · onchain 53 · fundamental 10 · kb 70).
 - [x] `POST /api/chat` answers a mechanism question with `[N]` citations from KB (verified live).
-- [x] out-of-corpus + trading-advice refused with the exact phrases (live + deterministic guards).
+- [x] out-of-corpus refused with the exact phrase; trading-advice returns a grounded, cited view (live + deterministic guards).
 - [x] a coin with no recent news (LINK) refuses cleanly — no hallucination, no crash.
 - [x] retrieval eval recall@8 = 0.90 (mechanism/fundamental ≥ 0.75, overall ≥ 0.70). Cost **< €5**
       (€0 — local Ollama).

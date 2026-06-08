@@ -10,7 +10,7 @@
 
 Read `PROJECT.md` and `STATE.md`. Stages 1–3 done: data in Postgres, Spring Boot backend serving markets/signals + a ta4j TA verdict.
 
-This stage builds the **Researcher** — a RAG chat over the data already in Postgres (news + on-chain + fundamentals) plus a curated coin **Knowledge Base**, using **Spring AI + pgvector + OpenAI gpt-4o-mini**. It answers three question types with citations: news-driven, mechanism/educational, and fundamental. It is **strictly grounded** (refuses when sources don't cover the question) and **never gives trading advice**.
+This stage builds the **Researcher** — a RAG chat over the data already in Postgres (news + on-chain + fundamentals) plus a curated coin **Knowledge Base**, using **Spring AI + pgvector + OpenAI gpt-4o-mini**. It answers three question types with citations: news-driven, mechanism/educational, and fundamental. It is **strictly grounded** (refuses when sources don't cover the question) and gives **actionable, cited signal-based views** with an educational/paper-trading disclaimer.
 
 ## Reality from Phase A — size expectations to the actual corpus
 
@@ -62,7 +62,8 @@ You are a precise crypto market research assistant. Answer ONLY from the provide
 - Every factual claim must end with a citation [N] (the chunk number).
 - If the context does not answer the question, reply EXACTLY: "The available sources do not answer this question." Do not guess.
 - Be concise — 5 sentences max unless asked for detail.
-- If asked for trading advice, refuse EXACTLY: "I can summarise what sources are saying, but I cannot give trading advice."
+- When asked for a recommendation or signal, give an actionable, balanced view (leaning bullish, bearish or neutral): weigh the supporting AND opposing evidence, name the single biggest risk, and tie every judgement to a citation [N].
+- End any recommendation with this exact sentence on its own line: "This is educational decision-support for paper trading — not financial advice."
 - Distinguish news sentiment (what people say) from on-chain signal (what they do).
 - Prefer KB chunks for mechanism questions, recent news for "what's happening", on-chain/fundamental chunks for fundamentals.
 ```
@@ -88,7 +89,7 @@ Cache responses in-memory keyed by `(query, retrievedChunkIds)`.
 ### 8. Tests
 
 - An **out-of-corpus** question (*"What will BTC be worth in 2030?"*) returns the exact refusal phrase.
-- A **trading-advice** question (*"Should I buy ETH now?"*) returns the exact advice-refusal phrase.
+- A **trading-advice** question (*"Should I buy ETH now?"*) returns a grounded, cited view (no longer refused), closing with the educational/paper-trading disclaimer.
 - A **mechanism** question retrieves the right coin's `kb` chunk (e.g., SOL consensus).
 - Reindex produces non-zero chunks for `kb` and `news`.
 - A coin with zero recent news does not crash the chat — it refuses cleanly.
@@ -101,7 +102,7 @@ Append a **Stage 4** section: chunk counts per source type, recall@8 per categor
 
 - `POST /api/rag/reindex` populates the pgvector store; `GET /api/rag/status` shows non-zero counts per source type.
 - `POST /api/chat` answers a mechanism question with `[N]` citations drawn from KB.
-- An out-of-corpus question and a trading-advice question are both refused with the exact phrases.
+- An out-of-corpus question is refused with the exact phrase; a trading-advice question returns a grounded, cited view.
 - A coin with no recent news refuses cleanly (no hallucination).
 - All tests pass; OpenAI cost < €5.
 

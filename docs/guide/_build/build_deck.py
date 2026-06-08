@@ -298,7 +298,7 @@ bullets(s, 0.62, 2.0, 6.5, 3.7, [
     "pgvector stores them inside the same Postgres database.",
     "RAG = retrieve real sources, then answer using only them.",
     ("Every answer is cited [1][2]; it refuses if the answer isn’t there.", INK),
-    "Never gives trading advice — by design.",
+    "Gives cited, signal-based views — flagged ‘educational, not financial advice’.",
     ("recall@8 = 0.90 · 100% of answers cited.", GREEN),
 ], size=13.5, gap=9)
 chip(s, 0.62, 6.0, 6.5, 0.78,

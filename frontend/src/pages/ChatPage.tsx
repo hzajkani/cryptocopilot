@@ -7,17 +7,24 @@ import { CitationSourceBadge, SourceBadge } from '../components/SourceBadge';
 import { IconExternal } from '../components/icons';
 import { UNIVERSE, type AnswerWithCitations, type Citation } from '../api/types';
 
-// The backend's exact deterministic refusal phrases (Stage 4). Rendered as a
-// calm system message, never an error (Stage 6 brief).
-const REFUSALS = [
-  'The available sources do not answer this question.',
-  'I can summarise what sources are saying, but I cannot give trading advice.',
-];
+// The backend's exact deterministic refusal phrase (Stage 4) — shown when the sources
+// don't cover the question. Rendered as a calm system message, never an error (Stage 6 brief).
+const REFUSALS = ['The available sources do not answer this question.'];
 
 export function isRefusalOrEmpty(answer: string): boolean {
   const a = answer.trim();
   return a.length === 0 || REFUSALS.includes(a);
 }
+
+// One-tap example prompts for the empty Researcher: a mix of mechanism, news and on-chain
+// questions plus the now-supported signal/advice style.
+const SAMPLE_QUESTIONS = [
+  'How does Solana achieve consensus?',
+  "What's the latest news on Bitcoin?",
+  'Is now a good time to add to ETH?',
+  'Do the signals lean bullish or bearish on SOL?',
+  'What are the biggest risks for BTC right now?',
+];
 
 type ChatMsg =
   | { role: 'user'; text: string }
@@ -106,8 +113,8 @@ export function ChatPage() {
     setSymbols((cur) => (cur.includes(sym) ? cur.filter((s) => s !== sym) : [...cur, sym]));
   }
 
-  async function send() {
-    const query = input.trim();
+  async function send(text?: string) {
+    const query = (text ?? input).trim();
     if (!query || busy) return;
     setMessages((m) => [...m, { role: 'user', text: query }]);
     setInput('');
@@ -138,7 +145,7 @@ export function ChatPage() {
     <>
       <PageHead
         title="Researcher"
-        subtitle="Grounded, cited chat over news, on-chain, fundamentals and the knowledge base. It refuses anything the sources don’t cover — and never gives trading advice."
+        subtitle="Grounded, cited chat over news, on-chain, fundamentals and the knowledge base. Ask for a signal-based view and it weighs the evidence both ways — it only refuses what the sources don’t cover."
       />
 
       <div className="src-strip" style={{ marginBottom: 12 }}>
@@ -167,9 +174,25 @@ export function ChatPage() {
       <div className="chat-shell">
         <div className="chat-log" ref={logRef}>
           {messages.length === 0 && (
-            <div className="msg system">
-              Ask about coin mechanisms, recent news, on-chain activity or fundamentals — e.g.
-              “How does Solana achieve consensus?”
+            <div className="chat-empty">
+              <p className="chat-empty-lead">
+                Ask about coin mechanisms, recent news, on-chain activity or fundamentals — or ask
+                for a signal-based view. Every answer is grounded in cited sources.
+              </p>
+              <div className="sample-qs">
+                <span className="sample-qs-label">Try</span>
+                {SAMPLE_QUESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    className="pill sample-q"
+                    onClick={() => send(q)}
+                    disabled={busy}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {messages.map((m, i) =>
@@ -193,7 +216,7 @@ export function ChatPage() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}
           />
-          <button className="btn primary" onClick={send} disabled={busy || !input.trim()}>
+          <button className="btn primary" onClick={() => send()} disabled={busy || !input.trim()}>
             Send
           </button>
         </div>

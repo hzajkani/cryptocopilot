@@ -58,14 +58,13 @@ Returns numbered chunks `[1..k]`.
 
 ## Grounding & refusal (deterministic guards, not left to the LLM)
 
-The system prompt forbids ungrounded claims, but three **deterministic** guards enforce it
-regardless of what the model emits:
+The Researcher gives actionable, signal-based views when asked, but every judgement stays tied to
+the cited context and closes with an educational/paper-trading disclaimer. The system prompt forbids
+ungrounded claims, and two **deterministic** guards enforce it regardless of what the model emits:
 
-1. **Trading-advice** queries → refuse *before any LLM call*:
-   `"I can summarise what sources are saying, but I cannot give trading advice."`
-2. **Empty retrieval** → refuse *before any LLM call*:
+1. **Empty retrieval** → refuse *before any LLM call*:
    `"The available sources do not answer this question."`
-3. **Answer with no verifiable `[N]` citation** → treated as ungrounded and replaced with the
+2. **Answer with no verifiable `[N]` citation** → treated as ungrounded and replaced with the
    no-context refusal above.
 
 Citation rate is therefore **100%** by construction (PROJECT.md §9): any non-refusal answer cites.

@@ -12,11 +12,12 @@ import org.springframework.stereotype.Component;
 
 /**
  * Generates the grounded answer from retrieved chunks (PROJECT.md Stage 4 §5) using the
- * {@link LlmClient}. Strictly grounded and advice-free, enforced by deterministic guards around
- * the model call so the exact refusal phrases never depend on the LLM cooperating:
+ * {@link LlmClient}. The Researcher gives actionable, signal-based views when asked, but stays
+ * strictly grounded: every judgement is tied to the cited context and closes with an
+ * educational/paper-trading disclaimer (see {@link #SYSTEM_PROMPT}). Two deterministic guards
+ * around the model call never depend on the LLM cooperating:
  *
  * <ol>
- *   <li>a trading-advice question is refused before any LLM call;</li>
  *   <li>empty retrieval is refused before any LLM call;</li>
  *   <li>after generation, an answer with no valid {@code [N]} citation is treated as ungrounded
  *       and replaced with the exact "sources do not answer" refusal.</li>
@@ -28,28 +29,20 @@ import org.springframework.stereotype.Component;
 public class Generator {
 
     static final String REFUSAL_NO_CONTEXT = "The available sources do not answer this question.";
-    static final String REFUSAL_ADVICE =
-            "I can summarise what sources are saying, but I cannot give trading advice.";
 
-    /** Verbatim intent from the Stage 4 prompt §5. */
+    /** Verbatim intent from the Stage 4 prompt §5, extended (Stage 7) to give grounded, signal-based views. */
     static final String SYSTEM_PROMPT = """
-            You are a precise crypto market research assistant. Answer ONLY from the provided context.
+            You are a precise crypto market research assistant for a paper-trading simulator. Answer ONLY from the provided context.
             - Every factual claim must end with a citation [N] (the chunk number).
             - If the context does not answer the question, reply EXACTLY: "The available sources do not answer this question." Do not guess.
             - Be concise — 5 sentences max unless asked for detail.
-            - If asked for trading advice, refuse EXACTLY: "I can summarise what sources are saying, but I cannot give trading advice."
+            - When asked for a recommendation or signal, give an actionable, balanced view (e.g. leaning bullish, bearish or neutral): weigh the supporting AND opposing evidence from the context, name the single biggest risk, and tie every judgement to a citation [N].
+            - End any recommendation with this exact sentence on its own line: "This is educational decision-support for paper trading — not financial advice."
             - Distinguish news sentiment (what people say) from on-chain signal (what they do).
             - Prefer KB chunks for mechanism questions, recent news for "what's happening", on-chain/fundamental chunks for fundamentals.""";
 
     private static final Pattern CITATION = Pattern.compile("\\[(\\d+)\\]");
     private static final int SNIPPET_LEN = 160;
-
-    /** Phrases that mark a request for a buy/sell/hold/timing recommendation. */
-    private static final List<String> ADVICE_CUES = List.of(
-            "should i buy", "should i sell", "should i invest", "should i hold", "should i get into",
-            "should i put", "is it a good time to buy", "is it a good time to sell", "good time to buy",
-            "good time to sell", "worth buying", "worth selling", "good investment", "is it a buy",
-            "is it a sell", "buy or sell", "do you recommend", "what should i do", "should i ape");
 
     private final LlmClient llm;
     private final Map<String, AnswerWithCitations> cache = new ConcurrentHashMap<>();
@@ -74,10 +67,6 @@ public class Generator {
         LlmProvider provider = (requested != null && llm.supports(requested))
                 ? requested : LlmProvider.OLLAMA;
 
-        if (isAdviceRequest(query)) {
-            return new AnswerWithCitations(REFUSAL_ADVICE, List.of(), chunks,
-                    elapsedMs(start), retrieval.classification(), provider.label());
-        }
         if (chunks.isEmpty()) {
             return new AnswerWithCitations(REFUSAL_NO_CONTEXT, List.of(), chunks,
                     elapsedMs(start), retrieval.classification(), provider.label());
@@ -100,19 +89,6 @@ public class Generator {
                 elapsedMs(start), retrieval.classification(), provider.label());
         cache.put(key, result);
         return result;
-    }
-
-    static boolean isAdviceRequest(String query) {
-        if (query == null) {
-            return false;
-        }
-        String q = query.toLowerCase(Locale.ROOT);
-        for (String cue : ADVICE_CUES) {
-            if (q.contains(cue)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     static String buildUserMessage(String query, List<RetrievedChunk> chunks) {

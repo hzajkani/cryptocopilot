@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Unit test of the {@link Generator}'s grounding/citation/refusal logic with a fake {@link LlmClient}.
- * No OpenAI, no Spring. The two refusal phrases and the no-citation guard must hold deterministically.
+ * No OpenAI, no Spring. The no-context refusal, the no-citation guard, and grounded signal-based
+ * answers must hold deterministically.
  */
 class GeneratorTest {
 
@@ -39,17 +40,18 @@ class GeneratorTest {
     }
 
     @Test
-    void tradingAdviceRefusedWithoutCallingLlm() {
+    void tradingAdviceIsAnsweredFromContextWithCitations() {
         FakeLlm llm = new FakeLlm();
-        llm.explodeIfCalled = true;
+        llm.reply = "On-chain flows and recent news lean cautiously bullish for ETH [1].\n"
+                + "This is educational decision-support for paper trading — not financial advice.";
         Generator generator = new Generator(llm);
 
         AnswerWithCitations a = generator.generate("Should I buy ETH now?",
-                withChunks(chunk(1, "k1", "ETH uses proof of stake.", "kb", "ETH")));
+                withChunks(chunk(1, "k1", "ETH staking inflows hit a 3-month high.", "onchain", "ETH")));
 
-        assertThat(a.answer()).isEqualTo(Generator.REFUSAL_ADVICE);
-        assertThat(a.citations()).isEmpty();
-        assertThat(llm.calls.get()).isZero();
+        assertThat(a.answer()).isEqualTo(llm.reply);
+        assertThat(a.citations()).extracting(Citation::number).containsExactly(1);
+        assertThat(llm.calls.get()).isEqualTo(1);
     }
 
     @Test

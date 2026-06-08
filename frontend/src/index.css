@@ -824,6 +824,49 @@ input.input:disabled {
   text-align: center;
   max-width: 90%;
 }
+.chat-empty {
+  margin: auto;
+  max-width: 92%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+  color: var(--text-dim);
+  padding: 8px 0;
+}
+.chat-empty-lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.sample-qs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+.sample-qs-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.sample-q {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 11px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.sample-q:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-bg);
+}
+.sample-q:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .cite-chip {
   display: inline-flex;
   align-items: center;

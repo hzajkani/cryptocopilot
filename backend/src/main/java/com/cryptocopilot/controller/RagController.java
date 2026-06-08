@@ -28,7 +28,8 @@ public class RagController {
 
     @Operation(summary = "Ask the Researcher",
             description = "Strictly-grounded answer with [N] citations. Refuses out-of-corpus "
-                    + "questions and trading advice with fixed phrases; never hallucinates. "
+                    + "questions with a fixed phrase; gives an actionable, signal-based view (with an "
+                    + "educational/paper-trading disclaimer) when asked; never hallucinates. "
                     + "Optional body field 'provider' (\"ollama\" default / \"openai\") selects the "
                     + "answering model; the response echoes the provider actually used.")
     @PostMapping("/api/chat")
