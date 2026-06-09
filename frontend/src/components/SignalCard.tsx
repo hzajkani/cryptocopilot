@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Signal } from '../api/types';
+import { featureLabel } from '../lib/featureLabels';
 import { fmtNum, fmtPctFromFraction } from '../lib/format';
 import { ConfidenceBadge, MlClassBadge, TaDirectionBadge } from './badges';
 import { SourceBadge } from './SourceBadge';
@@ -52,7 +53,7 @@ export function SignalCard({ signal, linkSymbol = true }: { signal: Signal; link
             return (
               <div className={`shap-chip ${pos ? 'pos' : 'neg'}`} key={d.rank}>
                 <span className="sc-rank">#{d.rank}</span>
-                <span className="sc-name">{d.featureName}</span>
+                <span className="sc-name">{featureLabel(d.featureName)}</span>
                 <span className="sc-arrow">{pos ? '↑' : '↓'}</span>
                 <span className="sc-val">{signed(d.shapValue)}</span>
               </div>

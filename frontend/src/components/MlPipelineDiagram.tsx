@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Signal } from '../api/types';
+import { featureLabel } from '../lib/featureLabels';
 import { SourceBadge } from './SourceBadge';
 
 // A static, self-explaining picture of the Python ML pipeline (PROJECT.md §2,
@@ -106,7 +107,8 @@ export function MlPipelineDiagram({ signals }: { signals?: Signal[] | null }) {
               <YAxis
                 type="category"
                 dataKey="featureName"
-                width={150}
+                tickFormatter={featureLabel}
+                width={168}
                 stroke="#9aa6b2"
                 fontSize={10.5}
                 tickLine={false}
@@ -120,6 +122,7 @@ export function MlPipelineDiagram({ signals }: { signals?: Signal[] | null }) {
                   borderRadius: 8,
                   fontSize: 12,
                 }}
+                labelFormatter={(v) => featureLabel(String(v))}
                 formatter={(v: number) => [v.toFixed(4), 'mean |SHAP|']}
               />
               <Bar dataKey="value" radius={[0, 3, 3, 0]} isAnimationActive={false}>
