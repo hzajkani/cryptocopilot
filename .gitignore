@@ -26,3 +26,5 @@ ml/reports/*
 # Personal project guide + Demo Day deck (guides, presentation, screenshots, build scripts).
 # Kept local on purpose — never committed or pushed.
 #/docs/guide/
+# Local full-project backup - kept on machine, never pushed
+/cryptocopilot-archive/
