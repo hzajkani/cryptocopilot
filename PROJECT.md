@@ -4,14 +4,11 @@
 
 **Project Description and Engineering Plan**
 
-Kamran Zajkani — personal project (not the WBS capstone).
-This is a deliberate rebuild of the original CryptoCopilot to:
+Build a **production-grade Spring Boot fintech backend** with (Spring AI, ta4j, REST, paper-trading engine, deterministic Analyst aggregator).
 
-1. Build a **production-grade Spring Boot fintech backend** as a portfolio piece for the Frankfurt market (Spring AI, ta4j, REST, paper-trading engine, deterministic Analyst aggregator).
-2. Keep **ML where Python is strongest** (XGBoost, isotonic calibration, SHAP).
-3. Demonstrate a clean **polyglot architecture** where two languages cooperate through a shared database — no RPC, no shared model files.
+Keep **ML where Python is strongest** (XGBoost, isotonic calibration, SHAP).
 
-> **This file is the frozen spec. Do not modify it during the build.** Every Claude Code session reads this file first, then `STATE.md`.
+Demonstrate a clean **polyglot architecture** where two languages cooperate through a shared database — no RPC, no shared model files.
 
 ---
 
@@ -320,5 +317,3 @@ Each stage closes with a `STATE.md` update and a git tag `stage-N-done`.
 - No single point of failure in data: multi-source by design; log-and-skip on any source failure.
 
 ---
-
-*— end of frozen spec —*
