@@ -4,6 +4,42 @@
 
 ## Current status
 
+**Stage 8 — README repositioning + LinkedIn post: ✅ COMPLETE** (non-functional; no new tag).
+**Documentation-only repositioning** — no schema, model, trading, or architecture change (the
+polyglot boundary + table ownership are untouched, PROJECT.md §3). The repo now reads as an
+**AI-engineering project that uses crypto as its domain**, not "a crypto bot."
+
+- **README rewritten AI-first** — the opening pitch leads with the GenAI story (production RAG on
+  Spring AI 1.0.8 + pgvector, strict `[N]` grounding + the fixed refusal phrase, the Analyst's numeric
+  hallucination guard, explainable ML/SHAP, the runtime Ollama↔OpenAI toggle). A dedicated
+  **GenAI / RAG engineering** section is now the centerpiece near the top
+  (indexer→retriever→generator, pgvector HNSW/cosine/768-dim, chunk counts news 124 · onchain 53 ·
+  fundamental 10 · kb 70 = 257, the deterministic guards, eval numbers recall@8 0.90 / citation 100% /
+  classifier 1.00, and the swappable-provider design). Everything else (architecture diagram, honest
+  scope, data sources, ownership, build story, tests, layout) is **kept but demoted** below.
+- **Exact disclaimer present** verbatim near the top (under the title, before architecture):
+  *"Educational / analytics demo — not financial advice."* — alongside the existing paper-only framing.
+- **Real screenshots** — 5 real captures placed in `docs/img/` (markets, signals, analyst,
+  performance, ml-pipeline), sourced from the 2026-06-06 live session in `docs/guide/screenshots/`;
+  the README renders them. The cited-answer **chat** screenshot is a **clearly flagged five-minute
+  manual step** (`docs/img/chat.png` / optional `docs/img/chat-demo.gif`) — it needs a live
+  interaction that can't be captured headlessly in this environment; `docs/img/README.md` documents
+  the exact capture steps and the README references the drop-in near the GenAI section.
+- **Career/personal framing removed** — neutralized "production *fintech* backend" → "production
+  backend" (`README.md` + `docs/ARCHITECTURE.md`) and a "capstone" Javadoc → "Python reference"
+  (`backend/.../service/TaVerdictTest.java`). README / STATE / the four cards otherwise carried **no**
+  job-search, target-city/market, recruiter, or bootcamp-name language. (The auxiliary `docs/guide/`
+  Demo-Day deck + spoken transcript — flagged "personal/local" in `.gitignore` — keep their
+  first-person presentation style; they are presentation artifacts, not a portfolio surface.)
+- **`docs/LINKEDIN_POST.md`** added — a ready-to-publish post (~200 words) leading with the
+  RAG / Spring AI / pgvector / explainable-ML angle, the honest numbers (recall@8 0.90, 100% citation,
+  ROC-AUC 0.578 vs 0.50 random, 231k+ rows), the polyglot one-liner, the disclaimer, the GitHub link,
+  6 hashtags, and **no job-search CTA**.
+
+No new git tag (documentation-only; `v1.0` stands).
+
+---
+
 **Stage 7 — Polish: demo mode, README, cards, Docker hardening: ✅ COMPLETE** (tagged `v1.0`).
 **🎉 Project complete — all 7 stages done; `v1.0` tagged.** This stage added **nothing functional**
 to the product logic (no schema change, no new model, no new trading behaviour, the polyglot boundary

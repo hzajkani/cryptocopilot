@@ -39,7 +39,7 @@ Hibernate `ddl-auto: validate` fails the backend on boot if any entity drifts fr
 **Consequences (all deliberate):**
 - **Decoupled availability** — even with the `ml` container off, the app serves the last predictions.
 - **Each language stays in its lane** — ML where Python is strongest (XGBoost, isotonic calibration,
-  SHAP); a production fintech backend where Java/Spring is strongest (ta4j, Spring AI, JPA, REST).
+  SHAP); a production backend where Java/Spring is strongest (ta4j, Spring AI, JPA, REST).
 - **No cross-language feature sharing** — feature engineering is Python-internal parquet; Java
   independently recomputes Ichimoku/RSI with ta4j. The small duplication keeps the boundary clean.
 

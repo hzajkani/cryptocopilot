@@ -11,7 +11,7 @@ import org.ta4j.core.BaseBarSeriesBuilder;
 
 /**
  * Golden tests for {@link TaVerdictEngine} on hand-built bar series — pure, no Spring/DB.
- * Mirrors the capstone's {@code test_ta_verdict}: a known-bullish series must score BULLISH
+ * Mirrors the Python reference {@code test_ta_verdict}: a known-bullish series must score BULLISH
  * with the expected Ichimoku-driven signals.
  */
 class TaVerdictTest {

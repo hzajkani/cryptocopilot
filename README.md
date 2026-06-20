@@ -1,25 +1,146 @@
-# CryptoCopilot — Polyglot Edition
+# CryptoCopilot — applied GenAI / RAG engineering
 
 [![CI](https://github.com/hzajkani/cryptocopilot/actions/workflows/ci.yml/badge.svg)](https://github.com/hzajkani/cryptocopilot/actions/workflows/ci.yml)
+&nbsp;![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.8-6db33f)
+&nbsp;![pgvector](https://img.shields.io/badge/pgvector-768--dim%20HNSW-336791)
 &nbsp;![paper-only](https://img.shields.io/badge/trading-paper--only-blue)
 &nbsp;![status](https://img.shields.io/badge/release-v1.0-success)
 
-A personal, **paper-only** crypto trading assistant, built as a **polyglot system**: a Python
-data + ML service, a Java/Spring Boot application service, and a React frontend — four Docker
-containers around one shared **Postgres + pgvector** database. It fuses four perspectives on each of
-10 coins — an **ML** direction signal, a deterministic **technical-analysis** verdict, a
-**fundamental** snapshot, and a cited **RAG** chat over news + on-chain + a knowledge base — into one
-explainable **Analyst** opinion, and lets you act with a **paper trade**.
+CryptoCopilot is an **AI-engineering project that happens to use crypto market data as its domain.**
+Its centerpiece is a production **retrieval-augmented generation (RAG)** pipeline built on
+**Spring AI 1.0.8 + pgvector**: a corpus indexer, a recency-aware retriever, and a strictly-grounded
+generator that answers **only** from indexed sources, **cites every claim `[N]`**, and **refuses
+out-of-corpus questions** with a fixed phrase. Around it sit a **numeric hallucination guard** (the
+LLM may *phrase* an opinion but never *invent a number*), **explainable ML** (calibrated XGBoost +
+SHAP drivers), and an **LLM provider that is swappable at runtime — local Ollama ↔ OpenAI — with no
+code changes.**
 
-> ⚠️ **Decision-support, not financial advice. Paper trading only — no real money, ever.**
+Crypto is the **chosen domain used to exercise this stack — the test bed, not the product.** Ten
+coins, five free public data sources, and a paper-trading sandbox give the RAG / ML / Analyst layers
+something real and messy to reason over. The engineering is the point — strict grounding, honest
+evaluation, a clean polyglot boundary — and the trading is the playground. The numbers below are
+**honest, not inflated**: an ML macro-F1 of 0.375 is presented as the deliberate, data-limited result
+it is (see [Honest scope](#honest-scope)).
 
-It's deliberately a **portfolio piece**: a production-grade Spring Boot fintech backend (Spring AI,
-ta4j, a paper-trading engine, a deterministic Analyst), ML kept where Python is strongest (XGBoost,
-isotonic calibration, SHAP), and a clean two-language boundary that is **just a shared database** —
-no RPC, no shared model files. The numbers below are **honest** (an ML macro-F1 of 0.375 is presented
-as the deliberate, data-limited result it is) — see [Honest scope](#honest-scope).
+> ⚠️ **Educational / analytics demo — not financial advice.**
+> Paper trading only — no real money, ever. A persistent *decision-support, not financial advice*
+> disclaimer is rendered on every page.
+
+---
+
+## GenAI / RAG engineering — the centerpiece
+
+A three-stage pipeline (**indexer → retriever → generator**) on **Spring AI 1.0.8**, package
+`com.cryptocopilot.rag`. The vector store is **pgvector**, created and owned by Spring AI — **HNSW
+index, cosine distance, `vector(768)`** — never hand-rolled. Three interview-ready cards document the
+intelligence layer: **[RAG card](docs/RAG_CARD.md)** · **[Model card](docs/MODEL_CARD.md)** ·
+**[Analyst card](docs/ANALYST_CARD.md)**.
+
+### 1. Indexer — what gets embedded
+
+`CorpusIndexer` does an **idempotent clear-and-rebuild** (deterministic UUID ids), one writer per
+`source_type`, embedding straight out of the relational tables + a curated Knowledge Base:
+
+| `source_type` | one chunk per | content | live count |
+|---|---|---|---|
+| **news** | `news` row | `title` + `summary` (+ symbols / source / url / sentiment / ts) | 124 |
+| **onchain** | `(symbol, ISO-week)` | weekly **mean** synthesis of the daily metrics | 53 |
+| **fundamental** | coin | synthesis of the latest `fundamentals` snapshot (null/zero fields omitted) | 10 |
+| **kb** | `##` section | curated mechanism / tokenomics markdown — 7 sections × 10 coins (ships in the jar) | 70 |
+
+→ **257 chunks**, embedded in ~4 s.
+
+### 2. Retriever — `k = 8`, recency-aware
+
+A rule-based `QueryClassifier` routes each question to a `source_type` (`kb` / `news` / `onchain` /
+`fundamental` / `all`; **classifier accuracy 1.00** on the eval). The retriever runs a
+`similaritySearch` filtered by `source_type` (+ optional `symbol`), oversamples, then **recency
+re-ranks news + on-chain only** (mechanism facts don't age):
+
+```
+score = 0.7 · similarity + 0.3 · exp(−ageDays / 14)
+```
+
+KB and fundamental chunks rank by similarity alone. Returns numbered chunks `[1..k]`.
+
+### 3. Generator — grounding & refusal are *deterministic*, not left to the LLM
+
+The generator gives actionable, signal-based views, but every judgement stays tied to the cited
+context. The system prompt forbids ungrounded claims, and **two deterministic guards enforce it
+regardless of what the model emits**:
+
+1. **Empty retrieval** → refuse *before any LLM call*.
+2. **Answer with no verifiable `[N]` citation** → treated as ungrounded and replaced with the
+   refusal.
+
+The fixed refusal phrase is: *"The available sources do not answer this question."* → **citation rate
+is 100 % by construction** (PROJECT.md §9).
+
+### The Analyst's hallucination guard
+
+The Analyst opinion is computed **deterministically** — a −2..+2 fusion of ML + technical + funda­
+mental + news into a direction / conviction / agreement score. The LLM **only phrases the summary;
+it may never invent a number.** A numeric guard (`isGrounded`) validates every number in the
+generated text against the deterministic inputs — on any invented number, LLM error, or empty reply
+it falls back to a **deterministic template**. So `/api/analyst` works even with the LLM offline.
+
+### Evaluation — the real numbers
+
+`evals/retrieval_eval.yaml` — 20 questions (8 news / 8 mechanism / 4 fundamental) authored against
+the **actual** corpus. `recall@8` = fraction with ≥ 1 of the top-8 chunks matching the expected
+`source_type` + `symbol` + a keyword. Runner: `RAG_LIVE=1 mvn -Dtest=RagLiveIT test` →
+`reports/retrieval_eval.md`.
+
+| category | n | recall@8 | gate (PROJECT.md §9) |
+|---|---|---|---|
+| news | 8 | 0.88 | per-category ≥ 0.70 ✓ |
+| mechanism | 8 | 0.88 | ✓ |
+| fundamental | 4 | 1.00 | ✓ |
+| **overall** | 20 | **0.90** | ≥ 0.75 ✓ |
+
+Plus **citation rate 100 %**, **classifier accuracy 1.00**. (News recall is corpus-dependent — only
+~124 rows over a ~4-day window — and rises as the `ml` scheduler ingests more.)
+
+### Swappable LLM provider — no code changes
+
+The **chat + Analyst generation model is toggled at runtime from the UI sidebar**:
+
+- **Local Ollama `llama3.2:3b`** — the default, free, **≈ €0**, no API key
+  ([`docs/OLLAMA_SETUP.md`](docs/OLLAMA_SETUP.md)).
+- **OpenAI `gpt-4o-mini`** — active when `OPENAI_API_KEY` is set; an OpenAI request with no key
+  **transparently falls back to Ollama**, and every response **reports the provider actually used**.
+
+The choice is persisted app-wide. **Embeddings stay on Ollama `nomic-embed-text` (768-dim) in both
+modes**, so flipping the chat provider **never triggers a reindex**. A full-OpenAI embedding path
+(`text-embedding-3-small`, 1536-dim) is wired and documented as a config-only switch (`+` reindex)
+for anyone who wants it. Both paths are documented because the project is meant to run **on a free
+local model out of the box**, while still proving the cloud path.
+
+> ▶ **The cited-answer chat** is the screenshot that best shows grounding in action. It needs a live
+> interaction (ask → grounded, cited answer), so it's a five-minute manual capture — see
+> [`docs/img/README.md`](docs/img/README.md). Drop-ins: `docs/img/chat.png` (still) /
+> `docs/img/chat-demo.gif` (a 10–20 s clip).
+
+## Screenshots
+
+Real captures of the running app (2026-06-06). The cited-answer **Researcher chat** is the one
+documented manual step above.
+
+| Markets | Signals | Analyst |
+|---|---|---|
+| ![Markets](docs/img/markets.png) | ![Signals](docs/img/signals.png) | ![Analyst](docs/img/analyst.png) |
+
+| Performance | ML Pipeline |
+|---|---|
+| ![Performance](docs/img/performance.png) | ![ML Pipeline](docs/img/ml-pipeline.png) |
+
+---
 
 ## Architecture — five containers, one shared database
+
+Beyond the AI layer, CryptoCopilot is a **polyglot system**: a Python data + ML service, a
+Java/Spring Boot application service, and a React frontend — Docker containers around one shared
+**Postgres + pgvector** database.
 
 ```
                         ┌──────────────────────────────┐
@@ -53,18 +174,6 @@ same ingest/train/predict jobs so they can be launched on demand from the backen
 the **ML Pipeline** page in the UI. The full rationale is one page:
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
-## Screenshots
-
-> _Placeholders — run `make demo`, then drop PNGs into [`docs/img/`](docs/img/) (filenames listed there)._
-
-| Markets | Signals | Analyst |
-|---|---|---|
-| ![Markets](docs/img/markets.png) | ![Signals](docs/img/signals.png) | ![Analyst](docs/img/analyst.png) |
-
-| Researcher (chat) | Performance |
-|---|---|
-| ![Chat](docs/img/chat.png) | ![Performance](docs/img/performance.png) |
-
 ## Quickstart — `make demo`
 
 **Prerequisites:** Docker + Docker Compose. Two free API keys:
@@ -76,6 +185,7 @@ summaries (everything still works without it — see [below](#ollama-up-or-down)
 # 1. Configure secrets (cp -n will NOT overwrite an existing .env)
 cp -n .env.example .env
 $EDITOR .env          # add COINGECKO_API_KEY + ETHERSCAN_API_KEY
+                      # (optional: OPENAI_API_KEY to enable the OpenAI toggle)
 
 # 2. One command: up + ingest + train + predict + reindex + seed a few paper trades
 make demo
@@ -100,16 +210,17 @@ When it finishes:
 ### Ollama up or down
 
 The Researcher chat and the LLM-phrased Analyst summary use a **free local Ollama**
-(`llama3.2:3b` + `nomic-embed-text`). The demo works **either way**:
+(`llama3.2:3b` + `nomic-embed-text`) by default. The demo works **either way**:
 
-- **Ollama up** → chat returns **cited** answers; the Analyst summary is LLM-phrased (behind a
+- **Ollama up** → chat returns **cited** answers; the Analyst summary is LLM-phrased (behind the
   numeric hallucination guard); `make demo` builds the RAG index.
 - **Ollama down** → chat **refuses cleanly** (it can't embed the query); the Analyst falls back to a
   **deterministic template** summary; the RAG-index step is skipped (not fatal). Markets, Signals,
   Analyst, Paper Trades and Performance are fully populated regardless.
 
 To enable the rich path later: install Ollama + pull the two models ([`docs/OLLAMA_SETUP.md`](docs/OLLAMA_SETUP.md)),
-then `make reindex`.
+then `make reindex`. To answer with OpenAI instead, set `OPENAI_API_KEY` and flip the **sidebar
+toggle** — embeddings stay local, so no reindex is needed.
 
 ## Manual setup (the individual commands)
 
@@ -150,12 +261,9 @@ presented as the deliberate, documented outcomes they are (PROJECT.md §9):
 
 | Layer | Result | Note |
 |---|---|---|
+| **RAG** retrieval | **recall@8 = 0.90** · 100 % citation rate | strict grounding; cited, signal-based views; refuses out-of-corpus with a fixed phrase. ≈ €0 (local Ollama). |
 | **ML** 3-class direction | macro **F1 0.375** · **AUC 0.578** · **Brier 0.606** | F1 is below the 0.40 stretch gate — a **data-limited** ceiling (~2y of OHLCV), investigated (not leakage, not the decision rule). AUC + Brier pass. |
-| **RAG** retrieval | **recall@8 = 0.90** · 100% citation rate | strict grounding; gives cited, signal-based views and refuses out-of-corpus questions with a fixed phrase. ≈ €0 (local Ollama). |
-| **Paper-trading** backtest | default **0 trades**; TA proxy **Sharpe −1.20** | the default needs a historical ML series that doesn't exist (single-snapshot ML); the TA proxy is an honest fee-and-regime-driven ≤0. |
-
-The intelligence layer is documented in three interview-ready cards:
-**[Model card](docs/MODEL_CARD.md)** · **[RAG card](docs/RAG_CARD.md)** · **[Analyst card](docs/ANALYST_CARD.md)**.
+| **Paper-trading** backtest | default **0 trades**; TA proxy **Sharpe −1.20** | the default needs a historical ML series that doesn't exist (single-snapshot ML); the TA proxy is an honest fee-and-regime-driven ≤ 0. |
 
 **Hard rules (never broken):** no real money, ever — paper only. Crypto only; no shorts, no leverage.
 The Analyst may only synthesise facts present in its four inputs (a hallucination guard falls back to
@@ -233,12 +341,12 @@ cryptocopilot/
 ├── STATE.md              # living handoff between stages — current status + row counts
 ├── README.md             # this file
 ├── Makefile              # `make demo`, plus up/down/ingest/train/predict/reindex/seed/test
-├── docker-compose.yml    # db + ml + backend + frontend (healthchecks + depends_on)
+├── docker-compose.yml    # db + ml + ml-api + backend + frontend (healthchecks + depends_on)
 ├── scripts/              # demo.sh (one-command demo) + seed_demo_trades.sh
-├── docs/                 # ARCHITECTURE.md + MODEL_CARD / RAG_CARD / ANALYST_CARD + OLLAMA_SETUP + img/
+├── docs/                 # ARCHITECTURE.md + MODEL_CARD / RAG_CARD / ANALYST_CARD + OLLAMA_SETUP + LINKEDIN_POST + img/
 ├── db/init.sql           # the shared schema contract (PROJECT.md §5)
 ├── reports/              # retrieval_eval.md, backtest_strategy_v1.md
-├── ml/                   # Python data + ML service (ingest, features, modelling, predict, scheduler)
+├── ml/                   # Python data + ML service (ingest, features, modelling, predict, scheduler, FastAPI)
 └── backend/             # Java/Spring Boot service (data, ta, rag, analyst, trading, web)
     └── src/main/java/com/cryptocopilot/
         ├── controller/ service/ entity/ repository/ dto/   # market data + ta4j TA verdict (Stage 3)
@@ -250,5 +358,5 @@ cryptocopilot/
 
 ---
 
-*CryptoCopilot is a personal project and a portfolio piece. **Decision-support, not financial advice;
-paper trading only.***
+*CryptoCopilot is an engineering portfolio piece. **Educational / analytics demo — not financial
+advice; paper trading only.***
